@@ -2,3 +2,56 @@
 members = ["clients/apps/rust", "clients/libs/rust", "server", "lib", "clients/tests/rust", "token-server-v2"]
 exclude = ["clients/apps/kotlin", "clients/apps/nodejs", "clients/apps/react-app", "clients/libs/nodejs", "docs", "enclave", "lockbox", "explorer", "keylistCron", "wasm"]
 resolver = "2"
+
+[workspace.dependencies]
+# Core bitcoin/crypto dependencies
+bitcoin = { version = "0.30.1", features = ["serde", "base64", "rand-std", "std"], default-features = false }
+bitcoin-consensus = { version = "0.30.1", features = ["serde", "base64", "rand-std", "std", "bitcoinconsensus"], default-features = false }
+bip39 = "2.0"
+bech32 = { version = "0.9.1", default-features = false }
+secp256k1-zkp = { git = "https://github.com/ssantos21/rust-secp256k1-zkp.git", branch = "blinded-musig-scheme", features = [ "rand-std", "bitcoin_hashes", "std" ] }
+electrum-client = "0.18.0"
+miniscript = "12.3.0"
+
+# Serialization 
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.96"
+
+# Utilities
+hex = "0.4.3"
+uuid = { version = "1.3.1", features = ["v4", "serde"] }
+rand = "0.8.5"
+anyhow = "1.0"
+chrono = "0.4.31"
+sha2 = "0.10.8"
+log = "0.4.22"
+env_logger = "0.11.5"
+thiserror = "1.0.59"
+
+# Network/HTTP
+reqwest = { version = "0.11.16", features = ["blocking", "json", "socks"] }
+config = "0.13.1"
+
+# Async runtime
+tokio = { version = "1.27.0", features = ["full"] }
+
+# Web framework
+rocket = { version = "0.5.0", features = ["json"] }
+
+# Database
+sqlx = { version = "0.8.1", features = [ "runtime-tokio", "time", "uuid", "migrate", "macros" ], default-features = false }
+
+# Schema generation
+schemars = { version = "0.8.12", features = ["chrono", "uuid"] }
+
+# CLI
+clap = { version = "4.2.5", features = ["derive"]}
+
+# Other
+ecies = {version = "0.2.7", default-features = false, features = ["pure"]}
+uniffi = { version = "0.27.1", features = [ "cli" ] }
+nostr-sdk = "0.37.0"
+
+# Internal workspace dependencies  
+mercurylib = { path = "lib" }
+mercuryrustlib = { path = "clients/libs/rust" }
