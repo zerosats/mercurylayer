@@ -19,7 +19,9 @@
       {
         devShells.default = mkShell {
           buildInputs = [
-            openssl
+            ripgrep
+
+	    openssl
             llvmPackages_latest.clang
             llvmPackages_latest.bintools
             gcc13

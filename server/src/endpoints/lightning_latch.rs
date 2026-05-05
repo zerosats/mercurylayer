@@ -60,7 +60,7 @@ pub async fn post_paymenthash(statechain_entity: &State<StateChainEntity>, payme
 
     let sender_auth_key = super::utils::get_auth_key_by_statechain_id(&statechain_entity.pool, &statechain_id).await.unwrap();
 
-    let buffer = rand::thread_rng().gen::<[u8; 32]>();
+    let buffer = rand::thread_rng().r#gen::<[u8; 32]>();
     let pre_image = hex::encode(buffer.clone());
 
     let now = chrono::Utc::now();

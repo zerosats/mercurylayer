@@ -1,3 +1,4 @@
+.goose
 /target
 .vscode
 /server/.env
