@@ -25,26 +25,23 @@ services:
       - DB_NAME=mercury
     ports:
       - "8000:8000"
-  token-server:
+  token-server-v2:
     build:
-      context: token-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./token-server-v2/Dockerfile
     environment:
-      - PROCESSOR_URL = ""
-      - API_KEY = ""
-      - FEE = 10000
-      - UNIT = "BTC"
-      - DELAY = 3600
-      - DB_USER = "mercurylayer"
-      - DB_PASSWORD = "<CHANGEME>"
-      - DB_HOST = "<CHANGEME>"
-      - DB_PORT = 5432
-      - DB_NAME = "mercury"
-      - BITCOIND = "http://user:password@127.0.0.1:8332/"
-      - LIGHTNINGD = ""
-      - LNMACAROON = ""
+      - PUBLIC_KEY_DESCRIPTOR=wpkh([656a457c/84'/1'/0']tpubDCTXiLu1wcqUwQK6QMPPUTBzbRjsqMABzCvd5vG22KGoA95cTG1VkszQQJyx24UP8KEJVKrKRDRtUPodHVV59CfNqUkXjKUagowHJVSWq4C/0/*)#vn0n5xcd
+      - BITCOIN_NETWORK=testnet
+      - ELECTRUM_SERVER=tcp://esplora:50001
+      - FEE=10000
+      - CONFIRMATION_TARGET=2
+      - DB_USER=mercurylayer
+      - DB_PASSWORD=<CHANGEME>
+      - DB_HOST=<CHANGEME>
+      - DB_PORT=5432
+      - DB_NAME=mercury
     ports:
-      - "18080:18080"
+      - "8001:8001"
   explorer:
     build:
       context: explorer

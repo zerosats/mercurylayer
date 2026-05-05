@@ -74,16 +74,16 @@ services:
     depends_on:
       - postgres
 
-  token-server:
+  token-server-v2:
     build:
       context: .
-      dockerfile: ./token-server/Dockerfile
+      dockerfile: ./token-server-v2/Dockerfile
     environment:
-      PROCESSOR_URL: https://api.swiss-bitcoin-pay.ch
-      API_KEY: aaaa
-      FEE: 0.0001
-      UNIT: BTC
-      DELAY: 3600
+      PUBLIC_KEY_DESCRIPTOR: wpkh([656a457c/84'/1'/0']tpubDCTXiLu1wcqUwQK6QMPPUTBzbRjsqMABzCvd5vG22KGoA95cTG1VkszQQJyx24UP8KEJVKrKRDRtUPodHVV59CfNqUkXjKUagowHJVSWq4C/0/*)#vn0n5xcd
+      BITCOIN_NETWORK: regtest
+      ELECTRUM_SERVER: tcp://electrs:50001
+      FEE: 10000
+      CONFIRMATION_TARGET: 2
       DB_USER: postgres
       DB_PASSWORD: pgpassword
       DB_HOST: postgres
@@ -93,6 +93,7 @@ services:
       - "8001:8001"
     depends_on:
       - postgres
+      - electrs
 
   alice:
     image: lightninglabs/lndinit:v0.1.21-beta-lnd-v0.18.0-beta
