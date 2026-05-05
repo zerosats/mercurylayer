@@ -40,17 +40,17 @@ services:
     depends_on:
       - bitcoind
 
-  enclave-sgx:
+  lockbox:
     build:
-      context: enclave
-      dockerfile: Dockerfiles/SIM/Dockerfile
-    container_name: mercurylayer-enclave-sgx-1
+      context: lockbox
+      dockerfile: Dockerfile
+    container_name: mercurylayer-lockbox-1
     depends_on:
       - postgres
     environment:
-      ENCLAVE_DATABASE_URL: postgres://postgres:pgpassword@postgres:5432/postgres
-      ENCLAVE_PORT: 18080
-      SEED_DIR: ./seed
+      DATABASE_URL: postgres://postgres:pgpassword@postgres:5432/postgres
+      PORT: 18080
+      KEY_MANAGER: filesystem
     ports:
       - "18080:18080"
 
@@ -68,7 +68,7 @@ services:
       DB_PORT: 5432
       DB_NAME: postgres
       BATCH_TIMEOUT: 20
-      ENCLAVES: '[{"url": "http://mercurylayer-enclave-sgx-1:18080", "allow_deposit": true}]'
+      ENCLAVES: '[{"url": "http://mercurylayer-lockbox-1:18080", "allow_deposit": true}]'
     ports:
       - "8000:8000"
     depends_on:

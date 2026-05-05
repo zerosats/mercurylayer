@@ -4,7 +4,7 @@ Mercury layer client provides a user interface to the Mercury Layer protocol, vi
 
 # Running
 
-1. Run the `enclave` project on localhost
+1. Run the `lockbox` project on localhost (supports filesystem, Google KMS, or Hashicorp key managers)
 2. Run the `server` project on localhost
 3. Run one of the commands below
 

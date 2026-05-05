@@ -1,37 +1,16 @@
 version: '3.8'
 
 services:
-  aesm:
+  lockbox:
     build:
-      context: enclave
-      dockerfile: Dockerfiles/HW/Dockerfile
-      target: aesm
-    image: sgx_aesm
-    devices:
-      - /dev/isgx
-    volumes:
-      - aesmd-socket:/var/run/aesmd
-    stdin_open: true
-    tty: true
-
-  enclave-sgx:
-    build:
-      context: enclave
-      dockerfile: Dockerfiles/HW/Dockerfile
-      target: sample
+      context: lockbox
+      dockerfile: Dockerfile
     depends_on:
-      - aesm
       - db_enclave
     environment:
-      - ENCLAVE_DATABASE_URL=postgres://postgres:postgres@db_enclave:5432/enclave
-      - ENCLAVE_PORT=18080
-      - SEED_DIR=./seed
-    devices:
-      - /dev/isgx
-    volumes:
-      - aesmd-socket:/var/run/aesmd
-    stdin_open: true
-    tty: true
+      - DATABASE_URL=postgres://postgres:postgres@db_enclave:5432/enclave
+      - PORT=18080
+      - KEY_MANAGER=filesystem
 
   mercury-server:
     build:
@@ -40,7 +19,7 @@ services:
     depends_on:
       - db_server
     environment:
-      - LOCKBOX_URL=http://enclave-sgx:18080
+      - LOCKBOX_URL=http://lockbox:18080
       - BITCOIN_NETWORK=testnet
       - LOCKHEIGHT_INIT=1000
       - LH_DECREMENT=10
@@ -74,8 +53,6 @@ services:
 
 
 volumes:
-  aesmd-socket:
-    external: true
   postgres_enclave_data:
   postgres_server_data:
 

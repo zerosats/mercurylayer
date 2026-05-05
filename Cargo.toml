@@ -1,4 +1,4 @@
 [workspace]
 members = ["clients/apps/rust", "clients/libs/rust", "server", "wasm", "lib", "clients/tests/rust", "token-server-v2"]
-exclude = ["clients/apps/kotlin", "clients/apps/nodejs", "clients/apps/react-app", "clients/libs/nodejs", "docs", "enclave", "explorer", "keylistCron"]
+exclude = ["clients/apps/kotlin", "clients/apps/nodejs", "clients/apps/react-app", "clients/libs/nodejs", "docs", "enclave", "lockbox", "explorer", "keylistCron"]
 resolver = "2"

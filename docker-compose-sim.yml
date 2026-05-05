@@ -1,16 +1,16 @@
 version: '3.8'
 
 services:
-  enclave-sgx:
+  lockbox:
     build:
-      context: enclave
-      dockerfile: Dockerfiles/SIM/Dockerfile
+      context: lockbox
+      dockerfile: Dockerfile
     depends_on:
       - db_enclave
     environment:
-      - ENCLAVE_DATABASE_URL=postgres://postgres:postgres@db_enclave:5432/enclave
-      - ENCLAVE_PORT=18080
-      - SEED_DIR=./seed
+      - DATABASE_URL=postgres://postgres:postgres@db_enclave:5432/enclave
+      - PORT=18080
+      - KEY_MANAGER=filesystem
   mercury-server:
     build:
       context: .
@@ -18,7 +18,7 @@ services:
     depends_on:
       - db_server
     environment:
-      - LOCKBOX_URL=http://enclave-sgx:18080
+      - LOCKBOX_URL=http://lockbox:18080
       - BITCOIN_NETWORK=testnet
       - LOCKHEIGHT_INIT=1000
       - LH_DECREMENT=10

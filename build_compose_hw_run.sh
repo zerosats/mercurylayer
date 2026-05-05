@@ -1,5 +1,4 @@
 set -e
 
-docker volume create --driver local --opt type=tmpfs --opt device=tmpfs --opt o=rw aesmd-socket
-
+# Build and run hardware mode with lockbox (filesystem key manager)
 docker compose -f docker-compose-hw.yml up --build
