@@ -1,8 +1,14 @@
+use anyhow::{Result, anyhow};
+use mercurylib::{
+    transfer::sender::{
+        PaymentHashRequestPayload, PaymentHashResponsePayload, TransferPreimageRequestPayload,
+        TransferPreimageResponsePayload,
+    },
+    wallet::CoinStatus,
+};
+use serde::{Deserialize, Serialize};
 
 use crate::{client_config::ClientConfig, sqlite_manager::get_wallet};
-use anyhow::{anyhow, Result};
-use mercurylib::{transfer::sender::{PaymentHashRequestPayload, PaymentHashResponsePayload, TransferPreimageRequestPayload, TransferPreimageResponsePayload}, wallet::CoinStatus};
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct CreatePreImageResponse {
@@ -11,13 +17,14 @@ pub struct CreatePreImageResponse {
 }
 
 pub async fn create_pre_image(
-    client_config: &ClientConfig, 
-    wallet_name: &str, 
-    statechain_id: &str) -> Result<CreatePreImageResponse> 
-{
-    let batch_id = Some(uuid::Uuid::new_v4().to_string()).unwrap();
+    client_config: &ClientConfig,
+    wallet_name: &str,
+    statechain_id: &str,
+) -> Result<CreatePreImageResponse> {
+    let batch_id = uuid::Uuid::new_v4().to_string();
 
-    let mut wallet: mercurylib::wallet::Wallet = get_wallet(&client_config.pool, &wallet_name).await?;
+    let mut wallet: mercurylib::wallet::Wallet =
+        get_wallet(&client_config.pool, wallet_name).await?;
 
     let coin = wallet.coins
         .iter_mut()
@@ -25,7 +32,9 @@ pub async fn create_pre_image(
         .min_by_key(|tx| tx.locktime.unwrap_or(u32::MAX)); // Find the one with the lowest locktime
 
     if coin.is_none() {
-        return Err(anyhow!("No coins associated with this statechain ID were found"));
+        return Err(anyhow!(
+            "No coins associated with this statechain ID were found"
+        ));
     }
 
     let coin = coin.unwrap();
@@ -35,7 +44,10 @@ pub async fn create_pre_image(
     }
 
     if coin.status != CoinStatus::CONFIRMED && coin.status != CoinStatus::IN_TRANSFER {
-        return Err(anyhow::anyhow!("Coin status must be CONFIRMED or IN_TRANSFER to transfer it. The current status is {}", coin.status));
+        return Err(anyhow::anyhow!(
+            "Coin status must be CONFIRMED or IN_TRANSFER to transfer it. The current status is {}",
+            coin.status
+        ));
     }
 
     if coin.locktime.is_none() {
@@ -54,7 +66,7 @@ pub async fn create_pre_image(
     let path = "transfer/paymenthash";
 
     let client = client_config.get_reqwest_client()?;
-    let request = client.post(&format!("{}/{}", endpoint, path));
+    let request = client.post(format!("{}/{}", endpoint, path));
 
     let response = request.json(&payment_hash_payload).send().await?;
 
@@ -65,7 +77,8 @@ pub async fn create_pre_image(
 
     let value = response.text().await?;
 
-    let payment_hash_response_payload: PaymentHashResponsePayload = serde_json::from_str(value.as_str())?;
+    let payment_hash_response_payload: PaymentHashResponsePayload =
+        serde_json::from_str(value.as_str())?;
 
     Ok(CreatePreImageResponse {
         hash: payment_hash_response_payload.hash,
@@ -73,9 +86,13 @@ pub async fn create_pre_image(
     })
 }
 
-pub async fn confirm_pending_invoice(client_config: &ClientConfig, wallet_name: &str, statechain_id: &str) -> Result<()> {
-
-    let mut wallet: mercurylib::wallet::Wallet = get_wallet(&client_config.pool, &wallet_name).await?;
+pub async fn confirm_pending_invoice(
+    client_config: &ClientConfig,
+    wallet_name: &str,
+    statechain_id: &str,
+) -> Result<()> {
+    let mut wallet: mercurylib::wallet::Wallet =
+        get_wallet(&client_config.pool, wallet_name).await?;
 
     let coin = wallet.coins
         .iter_mut()
@@ -83,7 +100,9 @@ pub async fn confirm_pending_invoice(client_config: &ClientConfig, wallet_name: 
         .min_by_key(|tx| tx.locktime.unwrap_or(u32::MAX)); // Find the one with the lowest locktime
 
     if coin.is_none() {
-        return Err(anyhow!("No coins associated with this statechain ID were found"));
+        return Err(anyhow!(
+            "No coins associated with this statechain ID were found"
+        ));
     }
 
     let coin = coin.unwrap();
@@ -93,26 +112,38 @@ pub async fn confirm_pending_invoice(client_config: &ClientConfig, wallet_name: 
     let path = "transfer/unlock";
 
     let client = client_config.get_reqwest_client()?;
-    let request = client.post(&format!("{}/{}", client_config.statechain_entity, path));
+    let request = client.post(format!("{}/{}", client_config.statechain_entity, path));
 
-    let transfer_unlock_request_payload = mercurylib::transfer::receiver::TransferUnlockRequestPayload {
-        statechain_id: statechain_id.to_string(),
-        auth_sig: signed_statechain_id.to_string(),
-        auth_pub_key: None,
-    };
+    let transfer_unlock_request_payload =
+        mercurylib::transfer::receiver::TransferUnlockRequestPayload {
+            statechain_id: statechain_id.to_string(),
+            auth_sig: signed_statechain_id.to_string(),
+            auth_pub_key: None,
+        };
 
-    let status = request.json(&transfer_unlock_request_payload).send().await?.status();
+    let status = request
+        .json(&transfer_unlock_request_payload)
+        .send()
+        .await?
+        .status();
 
     if !status.is_success() {
-        return Err(anyhow::anyhow!("Failed to update transfer message".to_string()));
+        return Err(anyhow::anyhow!(
+            "Failed to update transfer message".to_string()
+        ));
     }
 
     Ok(())
 }
 
-pub async fn retrieve_pre_image(client_config: &ClientConfig, wallet_name: &str, statechain_id: &str, batch_id: &str) -> Result<String> {
-
-    let mut wallet: mercurylib::wallet::Wallet = get_wallet(&client_config.pool, &wallet_name).await?;
+pub async fn retrieve_pre_image(
+    client_config: &ClientConfig,
+    wallet_name: &str,
+    statechain_id: &str,
+    batch_id: &str,
+) -> Result<String> {
+    let mut wallet: mercurylib::wallet::Wallet =
+        get_wallet(&client_config.pool, wallet_name).await?;
 
     let coin = wallet.coins
         .iter_mut()
@@ -120,7 +151,9 @@ pub async fn retrieve_pre_image(client_config: &ClientConfig, wallet_name: &str,
         .min_by_key(|tx| tx.locktime.unwrap_or(u32::MAX)); // Find the one with the lowest locktime
 
     if coin.is_none() {
-        return Err(anyhow!("No coins associated with this statechain ID were found"));
+        return Err(anyhow!(
+            "No coins associated with this statechain ID were found"
+        ));
     }
 
     let coin = coin.unwrap();
@@ -130,7 +163,7 @@ pub async fn retrieve_pre_image(client_config: &ClientConfig, wallet_name: &str,
     let path = "transfer/transfer_preimage";
 
     let client = client_config.get_reqwest_client()?;
-    let request = client.post(&format!("{}/{}", client_config.statechain_entity, path));
+    let request = client.post(format!("{}/{}", client_config.statechain_entity, path));
 
     let transfer_preimage_request_payload = TransferPreimageRequestPayload {
         statechain_id: statechain_id.to_string(),
@@ -139,23 +172,30 @@ pub async fn retrieve_pre_image(client_config: &ClientConfig, wallet_name: &str,
         batch_id: batch_id.to_string(),
     };
 
-    let value = request.json(&transfer_preimage_request_payload).send().await?.text().await?;
+    let value = request
+        .json(&transfer_preimage_request_payload)
+        .send()
+        .await?
+        .text()
+        .await?;
 
-    let transfer_preimage_response_payload: TransferPreimageResponsePayload = serde_json::from_str(value.as_str())?;
+    let transfer_preimage_response_payload: TransferPreimageResponsePayload =
+        serde_json::from_str(value.as_str())?;
 
     Ok(transfer_preimage_response_payload.preimage)
 }
 
-
-pub async fn get_payment_hash(client_config: &ClientConfig, batch_id: &str) -> Result<Option<String>> {
-
+pub async fn get_payment_hash(
+    client_config: &ClientConfig,
+    batch_id: &str,
+) -> Result<Option<String>> {
     let path = format!("transfer/paymenthash/{}", batch_id);
 
     let client = client_config.get_reqwest_client()?;
-    let request = client.get(&format!("{}/{}", client_config.statechain_entity, path));
+    let request = client.get(format!("{}/{}", client_config.statechain_entity, path));
 
     let response = request.send().await?;
-    
+
     if response.status() == 401 {
         return Ok(None);
     } else if response.status() != 200 {
@@ -165,7 +205,8 @@ pub async fn get_payment_hash(client_config: &ClientConfig, batch_id: &str) -> R
 
     let value = response.text().await?;
 
-    let payment_hash_response_payload: PaymentHashResponsePayload = serde_json::from_str(value.as_str())?;
+    let payment_hash_response_payload: PaymentHashResponsePayload =
+        serde_json::from_str(value.as_str())?;
 
     Ok(Some(payment_hash_response_payload.hash))
 }

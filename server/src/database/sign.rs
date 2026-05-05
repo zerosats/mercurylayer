@@ -1,12 +1,11 @@
 use sqlx::Row;
 
-pub async fn get_server_pubnonce_from_null_challenge(pool: &sqlx::PgPool, statechain_id: &str) -> Option<String> {
-
-    let query = "SELECT server_pubnonce \
-        FROM statechain_signature_data \
-        WHERE statechain_id = $1 \
-        AND challenge is NULL \
-        ORDER BY created_at ASC";
+pub async fn get_server_pubnonce_from_null_challenge(
+    pool: &sqlx::PgPool,
+    statechain_id: &str,
+) -> Option<String> {
+    let query = "SELECT server_pubnonce FROM statechain_signature_data WHERE statechain_id = $1 \
+                 AND challenge is NULL ORDER BY created_at ASC";
 
     let row = sqlx::query(query)
         .bind(statechain_id)
@@ -14,10 +13,7 @@ pub async fn get_server_pubnonce_from_null_challenge(pool: &sqlx::PgPool, statec
         .await
         .unwrap();
 
-    if row.is_none()
-    {
-        return None;
-    }
+    row.as_ref()?;
 
     let row = row.unwrap();
 
@@ -26,18 +22,19 @@ pub async fn get_server_pubnonce_from_null_challenge(pool: &sqlx::PgPool, statec
     Some(server_pubnonce)
 }
 
-pub async fn insert_new_signature_data(pool: &sqlx::PgPool, server_pubnonce: &str, statechain_id: &str)  {
-
+pub async fn insert_new_signature_data(
+    pool: &sqlx::PgPool,
+    server_pubnonce: &str,
+    statechain_id: &str,
+) {
     let mut transaction = pool.begin().await.unwrap();
 
     // FOR UPDATE is used to lock the row for the duration of the transaction
-    // It is not allowed with aggregate functions (MAX in this case), so we need to wrap it in a subquery
+    // It is not allowed with aggregate functions (MAX in this case), so we need to
+    // wrap it in a subquery
     let max_tx_k_query = "\
-        SELECT COALESCE(MAX(tx_n), 0) \
-        FROM (\
-            SELECT * \
-            FROM statechain_signature_data \
-            WHERE statechain_id = $1 FOR UPDATE) AS result";
+        SELECT COALESCE(MAX(tx_n), 0) FROM (SELECT * FROM statechain_signature_data WHERE \
+                          statechain_id = $1 FOR UPDATE) AS result";
 
     let row = sqlx::query(max_tx_k_query)
         .bind(statechain_id)
@@ -46,12 +43,11 @@ pub async fn insert_new_signature_data(pool: &sqlx::PgPool, server_pubnonce: &st
         .unwrap();
 
     let mut new_tx_n = row.get::<i32, _>(0);
-    new_tx_n = new_tx_n + 1;
+    new_tx_n += 1;
 
     let query = "\
-        INSERT INTO statechain_signature_data \
-        (server_pubnonce, statechain_id, tx_n) \
-        VALUES ($1, $2, $3)";
+        INSERT INTO statechain_signature_data (server_pubnonce, statechain_id, tx_n) VALUES ($1, \
+                 $2, $3)";
 
     let _ = sqlx::query(query)
         .bind(server_pubnonce)
@@ -64,12 +60,15 @@ pub async fn insert_new_signature_data(pool: &sqlx::PgPool, server_pubnonce: &st
     transaction.commit().await.unwrap();
 }
 
-pub async fn update_signature_data_challenge(pool: &sqlx::PgPool, server_pub_nonce: &str, challenge: &str, statechain_id: &str)  {
-
+pub async fn update_signature_data_challenge(
+    pool: &sqlx::PgPool,
+    server_pub_nonce: &str,
+    challenge: &str,
+    statechain_id: &str,
+) {
     let query = "\
-        UPDATE statechain_signature_data \
-        SET challenge = $1 \
-        WHERE statechain_id = $2 AND server_pubnonce= $3";
+        UPDATE statechain_signature_data SET challenge = $1 WHERE statechain_id = $2 AND \
+                 server_pubnonce= $3";
 
     let _ = sqlx::query(query)
         .bind(challenge)

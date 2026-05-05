@@ -1,9 +1,10 @@
 use std::str::FromStr;
 
+use bitcoin::{Address, PrivateKey, hashes::sha256, secp256k1};
+use secp256k1_zkp::{Message, PublicKey, Secp256k1};
+use serde::{Deserialize, Serialize};
+
 use crate::{error::MercuryError, utils::get_network, wallet::Coin};
-use bitcoin::{hashes::sha256, PrivateKey, secp256k1, Address};
-use secp256k1_zkp::{Message, Secp256k1, PublicKey};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenID {
@@ -50,7 +51,7 @@ pub struct AggregatedPublicKey {
 }
 
 #[cfg_attr(feature = "bindings", uniffi::export)]
-pub fn create_deposit_msg1(coin: &Coin, token_id: &str) -> Result<DepositMsg1, MercuryError>{
+pub fn create_deposit_msg1(coin: &Coin, token_id: &str) -> Result<DepositMsg1, MercuryError> {
     let msg = Message::from_hashed_data::<sha256::Hash>(token_id.to_string().as_bytes());
 
     let secp = Secp256k1::new();
@@ -58,7 +59,9 @@ pub fn create_deposit_msg1(coin: &Coin, token_id: &str) -> Result<DepositMsg1, M
     let keypair = secp256k1::KeyPair::from_seckey_slice(&secp, auth_secret_key.as_ref())?;
     let signed_token_id = secp.sign_schnorr(&msg, &keypair);
 
-    let auth_xonly_pubkey = PublicKey::from_str(&coin.auth_pubkey)?.x_only_public_key().0;
+    let auth_xonly_pubkey = PublicKey::from_str(&coin.auth_pubkey)?
+        .x_only_public_key()
+        .0;
 
     let deposit_msg_1 = DepositMsg1 {
         auth_key: auth_xonly_pubkey.to_string(),
@@ -70,8 +73,10 @@ pub fn create_deposit_msg1(coin: &Coin, token_id: &str) -> Result<DepositMsg1, M
 }
 
 #[cfg_attr(feature = "bindings", uniffi::export)]
-pub fn handle_deposit_msg_1_response(coin: &Coin, deposit_msg_1_response: &DepositMsg1Response) -> Result<DepositInitResult, MercuryError> {
-
+pub fn handle_deposit_msg_1_response(
+    coin: &Coin,
+    deposit_msg_1_response: &DepositMsg1Response,
+) -> Result<DepositInitResult, MercuryError> {
     let secp = Secp256k1::new();
 
     let server_pubkey_share = PublicKey::from_str(&deposit_msg_1_response.server_pubkey).unwrap();
@@ -92,18 +97,20 @@ pub fn handle_deposit_msg_1_response(coin: &Coin, deposit_msg_1_response: &Depos
 }
 
 #[cfg_attr(feature = "bindings", uniffi::export)]
-pub fn create_aggregated_address(coin: &Coin, network: String) -> Result<AggregatedPublicKey, MercuryError> {
-
+pub fn create_aggregated_address(
+    coin: &Coin,
+    network: String,
+) -> Result<AggregatedPublicKey, MercuryError> {
     let network = get_network(&network)?;
 
     let secp = Secp256k1::new();
 
     let user_pubkey_share = PublicKey::from_str(&coin.user_pubkey)?;
-    let server_pubkey_share = PublicKey::from_str(&coin.server_pubkey.as_ref().unwrap())?;
+    let server_pubkey_share = PublicKey::from_str(coin.server_pubkey.as_ref().unwrap())?;
 
     let aggregate_pubkey = user_pubkey_share.combine(&server_pubkey_share)?;
 
-    let aggregated_xonly_pubkey = aggregate_pubkey.x_only_public_key().0; 
+    let aggregated_xonly_pubkey = aggregate_pubkey.x_only_public_key().0;
 
     let aggregate_address = Address::p2tr(&secp, aggregated_xonly_pubkey, None, network);
 
@@ -111,5 +118,4 @@ pub fn create_aggregated_address(coin: &Coin, network: String) -> Result<Aggrega
         aggregate_pubkey: aggregate_pubkey.to_string(),
         aggregate_address: aggregate_address.to_string(),
     })
-
 }

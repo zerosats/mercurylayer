@@ -1,24 +1,27 @@
 use std::str::FromStr;
 
-use bitcoin::hashes::{sha256, Hash};
-use rocket::{serde::json::Json, response::status, State, http::Status};
-use secp256k1_zkp::{XOnlyPublicKey, schnorr::Signature, Message, Secp256k1, PublicKey};
-use serde::{Serialize, Deserialize};
+use bitcoin::hashes::{Hash, sha256};
+use rocket::{State, http::Status, response::status, serde::json::Json};
+use secp256k1_zkp::{Message, PublicKey, Secp256k1, XOnlyPublicKey, schnorr::Signature};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
 use crate::{server::StateChainEntity, server_config::Enclave};
 
-pub async fn get_token_no_server(statechain_entity: &State<StateChainEntity>, config: &crate::server_config::ServerConfig) -> status::Custom<Json<Value>>  {
-
+pub async fn get_token_no_server(
+    statechain_entity: &State<StateChainEntity>,
+    config: &crate::server_config::ServerConfig,
+) -> status::Custom<Json<Value>> {
     if config.network == "mainnet" {
         let response_body = json!({
             "error": "Internal Server Error",
             "message": "Token generation not supported on mainnet."
         });
-    
+
         return status::Custom(Status::InternalServerError, Json(response_body));
     }
 
-    let token_id = uuid::Uuid::new_v4().to_string();   
+    let token_id = uuid::Uuid::new_v4().to_string();
 
     crate::database::deposit::insert_new_token(&statechain_entity.pool, &token_id).await;
 
@@ -32,19 +35,20 @@ pub async fn get_token_no_server(statechain_entity: &State<StateChainEntity>, co
 
     let response_body = json!(token);
 
-    return status::Custom(Status::Ok, Json(response_body));
+    status::Custom(Status::Ok, Json(response_body))
 }
 
-pub async fn get_token_from_server(config: &crate::server_config::ServerConfig) -> status::Custom<Json<Value>>  {
-
+pub async fn get_token_from_server(
+    config: &crate::server_config::ServerConfig,
+) -> status::Custom<Json<Value>> {
     let client: reqwest::Client = reqwest::Client::new();
-    let request = client.get(&format!("{}/token/token_gen", config.token_server_url.as_ref().unwrap()));
+    let request = client.get(format!(
+        "{}/token/token_gen",
+        config.token_server_url.as_ref().unwrap()
+    ));
 
     let value = match request.send().await {
-        Ok(response) => {
-            let text = response.text().await.unwrap();
-            text
-        },
+        Ok(response) => response.text().await.unwrap(),
         Err(err) => {
             let response_body = json!({
                 "message": err.to_string()
@@ -57,17 +61,31 @@ pub async fn get_token_from_server(config: &crate::server_config::ServerConfig) 
                 Status::InternalServerError
             };
 
-        
             return status::Custom(status, Json(response_body));
-        },
+        }
     };
 
-    let response: serde_json::Value = serde_json::from_str(value.as_str()).expect(&format!("failed to parse: {}", value.as_str()));
+    let response: serde_json::Value = serde_json::from_str(value.as_str())
+        .unwrap_or_else(|_| panic!("failed to parse: {}", value.as_str()));
 
-    let token_id = response.get("token_id").unwrap().as_str().unwrap().to_string();
-    let deposit_address = response.get("deposit_address").unwrap().as_str().unwrap().to_string();
+    let token_id = response
+        .get("token_id")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    let deposit_address = response
+        .get("deposit_address")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
     let fee = response.get("fee").unwrap().as_u64().unwrap();
-    let confirmation_target = response.get("confirmation_target").unwrap().as_u64().unwrap();
+    let confirmation_target = response
+        .get("confirmation_target")
+        .unwrap()
+        .as_u64()
+        .unwrap();
 
     let token = mercurylib::deposit::TokenResponse {
         token_id,
@@ -79,12 +97,11 @@ pub async fn get_token_from_server(config: &crate::server_config::ServerConfig) 
 
     let response_body = json!(token);
 
-    return status::Custom(Status::Ok, Json(response_body));
+    status::Custom(Status::Ok, Json(response_body))
 }
 
 #[get("/deposit/get_token")]
-pub async fn get_token(statechain_entity: &State<StateChainEntity>) -> status::Custom<Json<Value>>  {
-
+pub async fn get_token(statechain_entity: &State<StateChainEntity>) -> status::Custom<Json<Value>> {
     let config = crate::server_config::ServerConfig::load();
 
     if config.token_server_url.is_none() {
@@ -95,7 +112,8 @@ pub async fn get_token(statechain_entity: &State<StateChainEntity>) -> status::C
 }
 
 fn get_random_enclave_index(statechain_id: &str, enclaves: &Vec<Enclave>) -> Result<usize, String> {
-    let index_from_statechain_id = get_enclave_index_from_statechain_id(statechain_id, enclaves.len() as u32);
+    let index_from_statechain_id =
+        get_enclave_index_from_statechain_id(statechain_id, enclaves.len() as u32);
 
     let selected_enclave = enclaves.get(index_from_statechain_id).unwrap();
     if selected_enclave.allow_deposit {
@@ -118,7 +136,7 @@ fn get_enclave_index_from_statechain_id(statechain_id: &str, enclave_array_len: 
     bytes.copy_from_slice(&hash_bytes[..16]);
     let random_number = u128::from_be_bytes(bytes);
 
-    return (random_number % enclave_array_len as u128) as usize;
+    (random_number % enclave_array_len as u128) as usize
 }
 
 struct TokenStatusResponse {
@@ -126,21 +144,21 @@ struct TokenStatusResponse {
     spent: bool,
     err: bool,
     status: Option<Status>,
-    err_message: Option<String>
+    err_message: Option<String>,
 }
 
-pub async fn check_token_status(token_id: &str) -> TokenStatusResponse{
-
+pub async fn check_token_status(token_id: &str) -> TokenStatusResponse {
     let config = crate::server_config::ServerConfig::load();
 
     let client: reqwest::Client = reqwest::Client::new();
-    let request = client.get(&format!("{}/token/token_verify/{}", config.token_server_url.as_ref().unwrap(), token_id));
+    let request = client.get(format!(
+        "{}/token/token_verify/{}",
+        config.token_server_url.as_ref().unwrap(),
+        token_id
+    ));
 
     let value = match request.send().await {
-        Ok(response) => {
-            let text = response.text().await.unwrap();
-            text
-        },
+        Ok(response) => response.text().await.unwrap(),
         Err(err) => {
             let message = err.to_string();
 
@@ -158,26 +176,29 @@ pub async fn check_token_status(token_id: &str) -> TokenStatusResponse{
                 status: Some(status),
                 err_message: Some(message),
             };
-        },
+        }
     };
 
-    let response: serde_json::Value = serde_json::from_str(value.as_str()).expect(&format!("failed to parse: {}", value.as_str()));
+    let response: serde_json::Value = serde_json::from_str(value.as_str())
+        .unwrap_or_else(|_| panic!("failed to parse: {}", value.as_str()));
 
     let confirmed = response.get("confirmed").unwrap().as_bool().unwrap();
     let spent = response.get("spent").unwrap().as_bool().unwrap();
 
-    return TokenStatusResponse {
+    TokenStatusResponse {
         confirmed,
         spent,
         err: false,
         status: None,
         err_message: None,
-    };
+    }
 }
 
 #[post("/deposit/init/pod", format = "json", data = "<deposit_msg1>")]
-pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_msg1: Json<mercurylib::deposit::DepositMsg1>) -> status::Custom<Json<Value>> {
-
+pub async fn post_deposit(
+    statechain_entity: &State<StateChainEntity>,
+    deposit_msg1: Json<mercurylib::deposit::DepositMsg1>,
+) -> status::Custom<Json<Value>> {
     let statechain_entity = statechain_entity.inner();
 
     let auth_key = XOnlyPublicKey::from_str(&deposit_msg1.auth_key).unwrap();
@@ -187,29 +208,32 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
     let msg = Message::from_hashed_data::<sha256::Hash>(token_id.to_string().as_bytes());
 
     let secp = Secp256k1::new();
-    if !secp.verify_schnorr(&signed_token_id, &msg, &auth_key).is_ok() {
-
+    if !secp
+        .verify_schnorr(&signed_token_id, &msg, &auth_key)
+        .is_ok()
+    {
         let response_body = json!({
             "message": "Signature does not match authentication key."
         });
-    
-        return status::Custom(Status::InternalServerError, Json(response_body));
 
+        return status::Custom(Status::InternalServerError, Json(response_body));
     }
 
-    let is_existing_key = crate::database::deposit::check_existing_key(&statechain_entity.pool, &auth_key).await;
+    let is_existing_key =
+        crate::database::deposit::check_existing_key(&statechain_entity.pool, &auth_key).await;
 
     if is_existing_key {
         let response_body = json!({
             "message": "The authentication key is already assigned to a statecoin."
         });
-    
+
         return status::Custom(Status::BadRequest, Json(response_body));
     }
 
-   let token_info = crate::database::deposit::get_token_info(&statechain_entity.pool, &token_id).await;
+    let token_info =
+        crate::database::deposit::get_token_info(&statechain_entity.pool, &token_id).await;
 
-   if token_info.is_none() {
+    if token_info.is_none() {
         let response_body = json!({
             "error": "Deposit Error",
             "message": "Token ID not found."
@@ -229,14 +253,13 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
     }
 
     if !token_info.confirmed {
-
         let token_status_response = check_token_status(&token_id).await;
 
         if token_status_response.err {
             let response_body = json!({
                 "message": token_status_response.err_message.unwrap()
             });
-        
+
             return status::Custom(token_status_response.status.unwrap(), Json(response_body));
         }
 
@@ -244,7 +267,7 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
             let response_body = json!({
                 "message": "Token already spent."
             });
-    
+
             return status::Custom(Status::Gone, Json(response_body));
         }
 
@@ -252,7 +275,7 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
             let response_body = json!({
                 "message": "Token not confirmed."
             });
-        
+
             return status::Custom(Status::Gone, Json(response_body));
         }
     }
@@ -272,25 +295,22 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
     let path = "get_public_key";
 
     let client: reqwest::Client = reqwest::Client::new();
-    let request = client.post(&format!("{}/{}", lockbox_endpoint, path));
+    let request = client.post(format!("{}/{}", lockbox_endpoint, path));
 
     let payload = GetPublicKeyRequestPayload {
         statechain_id: statechain_id.clone(),
     };
 
     let value = match request.json(&payload).send().await {
-        Ok(response) => {
-            let text = response.text().await.unwrap();
-            text
-        },
+        Ok(response) => response.text().await.unwrap(),
         Err(err) => {
             let response_body = json!({
                 "error": "Internal Server Error",
                 "message": err.to_string()
             });
-        
+
             return status::Custom(Status::InternalServerError, Json(response_body));
-        },
+        }
     };
 
     #[derive(Serialize, Deserialize)]
@@ -298,7 +318,8 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
         server_pubkey: &'r str,
     }
 
-    let response: PublicNonceRequestPayload = serde_json::from_str(value.as_str()).expect(&format!("failed to parse: {}", value.as_str()));
+    let response: PublicNonceRequestPayload = serde_json::from_str(value.as_str())
+        .unwrap_or_else(|_| panic!("failed to parse: {}", value.as_str()));
 
     let mut server_pubkey_hex = response.server_pubkey.to_string();
 
@@ -308,7 +329,15 @@ pub async fn post_deposit(statechain_entity: &State<StateChainEntity>, deposit_m
 
     let server_pubkey = PublicKey::from_str(&server_pubkey_hex).unwrap();
 
-    crate::database::deposit::insert_new_deposit(&statechain_entity.pool, &token_id, &auth_key, &server_pubkey, &statechain_id, enclave_index as i32).await;
+    crate::database::deposit::insert_new_deposit(
+        &statechain_entity.pool,
+        &token_id,
+        &auth_key,
+        &server_pubkey,
+        &statechain_id,
+        enclave_index as i32,
+    )
+    .await;
 
     crate::database::deposit::set_token_spent(&statechain_entity.pool, &token_id).await;
 

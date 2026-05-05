@@ -1,34 +1,40 @@
-pub mod transfer;
 pub mod deposit;
-pub mod withdraw;
-pub mod wallet;
-pub mod utils;
-pub mod transaction;
-pub mod unifii_interface;
 pub mod error;
+pub mod transaction;
+pub mod transfer;
+pub mod unifii_interface;
+pub mod utils;
+pub mod wallet;
+pub mod withdraw;
 
 use std::str::FromStr;
 
-use bech32::{Variant, ToBase32, FromBase32};
+use bech32::{FromBase32, ToBase32, Variant};
 use bip39::Mnemonic;
-use bitcoin::{bip32::{ChildNumber, DerivationPath, ExtendedPrivKey}, secp256k1::{ffi::types::AlignedType, AllPreallocated, PublicKey, Secp256k1, SecretKey}, Address};
-
+use bitcoin::{
+    Address,
+    bip32::{ChildNumber, DerivationPath, ExtendedPrivKey},
+    secp256k1::{AllPreallocated, PublicKey, Secp256k1, SecretKey, ffi::types::AlignedType},
+};
 use error::MercuryError;
 
 #[cfg(feature = "bindings")]
 uniffi::setup_scaffolding!();
 
-const MAINNET_HRP : &str = "ml";
-const TESTNET_HRP : &str = "tml";
+const MAINNET_HRP: &str = "ml";
+const TESTNET_HRP: &str = "tml";
 
-pub fn encode_sc_address(user_pubkey: &PublicKey, auth_pubkey: &PublicKey, network: bitcoin::Network) -> core::result::Result<String, MercuryError> {
-
+pub fn encode_sc_address(
+    user_pubkey: &PublicKey,
+    auth_pubkey: &PublicKey,
+    network: bitcoin::Network,
+) -> core::result::Result<String, MercuryError> {
     let mut hrp = TESTNET_HRP;
 
     if network == bitcoin::Network::Bitcoin {
         hrp = MAINNET_HRP;
     }
-        
+
     let variant = Variant::Bech32m;
 
     let mut data = Vec::<u8>::new();
@@ -41,8 +47,10 @@ pub fn encode_sc_address(user_pubkey: &PublicKey, auth_pubkey: &PublicKey, netwo
     Ok(encoded)
 }
 
-pub fn decode_transfer_address(sc_address: &str) -> core::result::Result<(u8, PublicKey, PublicKey), MercuryError> {
-    let (hrp, data, variant)  = bech32::decode(sc_address)?;
+pub fn decode_transfer_address(
+    sc_address: &str,
+) -> core::result::Result<(u8, PublicKey, PublicKey), MercuryError> {
+    let (hrp, data, variant) = bech32::decode(sc_address)?;
 
     if hrp != MAINNET_HRP && hrp != TESTNET_HRP {
         return Err(MercuryError::InvalidStatechainAddressError);
@@ -61,27 +69,38 @@ pub fn decode_transfer_address(sc_address: &str) -> core::result::Result<(u8, Pu
     Ok((version, user_pubkey, auth_pubkey))
 }
 
-fn get_key(secp: &Secp256k1<AllPreallocated<'_>>, root: ExtendedPrivKey, derivation_path: &str, change_index: u32, address_index:u32) -> core::result::Result<SecretKey, MercuryError> {
+fn get_key(
+    secp: &Secp256k1<AllPreallocated<'_>>,
+    root: ExtendedPrivKey,
+    derivation_path: &str,
+    change_index: u32,
+    address_index: u32,
+) -> core::result::Result<SecretKey, MercuryError> {
     // derive child xpub
     let path = DerivationPath::from_str(derivation_path)?;
-    let child = root.derive_priv(&secp, &path)?;
+    let child = root.derive_priv(secp, &path)?;
 
     // generate key at m/change_index_number/address_index_number
     let change_index_number = ChildNumber::from_normal_idx(change_index)?;
     let address_index_number = ChildNumber::from_normal_idx(address_index)?;
 
-    let secret_key = child.derive_priv(&secp, &[change_index_number, address_index_number])?.private_key;
+    let secret_key = child
+        .derive_priv(secp, &[change_index_number, address_index_number])?
+        .private_key;
 
     Ok(secret_key)
 }
 
-pub fn get_sc_address(mnemonic: &str, index: u32, network: &str) -> core::result::Result<String, MercuryError> {
-
+pub fn get_sc_address(
+    mnemonic: &str,
+    index: u32,
+    network: &str,
+) -> core::result::Result<String, MercuryError> {
     let network = utils::get_network(network)?;
 
     // 1. Get the mnemonic from the wallet
     let mnemonic = Mnemonic::parse_normalized(mnemonic)?;
-    
+
     // 2. Get the seed from the mnemonic
     let seed = mnemonic.to_seed_normalized("");
 
@@ -94,11 +113,11 @@ pub fn get_sc_address(mnemonic: &str, index: u32, network: &str) -> core::result
     let root = ExtendedPrivKey::new_master(network, &seed)?;
 
     let user_derivation_path = "m/86h/0h/0h";
-    let user_seckey = get_key(&secp, root, &user_derivation_path, 0, index)?;
+    let user_seckey = get_key(&secp, root, user_derivation_path, 0, index)?;
     let user_pubkey = user_seckey.public_key(&secp);
 
     let auth_derivation_path = "m/89h/0h/0h";
-    let auth_seckey = get_key(&secp, root, &auth_derivation_path, 0, index)?;
+    let auth_seckey = get_key(&secp, root, auth_derivation_path, 0, index)?;
     let auth_pubkey = auth_seckey.public_key(&secp);
 
     encode_sc_address(&user_pubkey, &auth_pubkey, network)
@@ -106,7 +125,6 @@ pub fn get_sc_address(mnemonic: &str, index: u32, network: &str) -> core::result
 
 #[cfg_attr(feature = "bindings", uniffi::export)]
 pub fn validate_address(address: &str, network: &str) -> core::result::Result<bool, MercuryError> {
-
     let network = utils::get_network(network)?;
 
     if address.starts_with(MAINNET_HRP) || address.starts_with(TESTNET_HRP) {
@@ -122,20 +140,15 @@ pub fn validate_address(address: &str, network: &str) -> core::result::Result<bo
             Ok(_) => Ok(true),
             Err(_) => Err(MercuryError::InvalidStatechainAddressError),
         }
-    }
-    else {
+    } else {
         match Address::from_str(address) {
-            Ok(addr) => {
-
-                match addr.require_network(network) {
-                    Ok(_) => Ok(true),
-                    Err(_) => Err(MercuryError::BitcoinAddressMismatchNetworkError),
-                }
+            Ok(addr) => match addr.require_network(network) {
+                Ok(_) => Ok(true),
+                Err(_) => Err(MercuryError::BitcoinAddressMismatchNetworkError),
             },
             Err(_) => Err(MercuryError::InvalidBitcoinAddressError),
         }
-    
-    }    
+    }
 }
 
 #[cfg(test)]
@@ -144,13 +157,15 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mnemonic = String::from("ticket sock try two evidence employ fresh beauty settle general ridge lonely");
+        let mnemonic = String::from(
+            "ticket sock try two evidence employ fresh beauty settle general ridge lonely",
+        );
 
         let network = "testnet";
         let sc_address = get_sc_address(&mnemonic, 0, network).unwrap();
         let expected_sc_address = "tml1qqpgha2armzyvwwglqty24ztegut27neyvlkpu3894adsgascq96tjqr78gy6adlzsre3fqyrxdx8n68henrd6fzcgfwcltu3sesuh05nvxslxjnxw";
         assert_eq!(sc_address, expected_sc_address);
-       
+
         let network = "bitcoin";
         let sc_address = get_sc_address(&mnemonic, 0, network).unwrap();
         let expected_sc_address = "ml1qqpgha2armzyvwwglqty24ztegut27neyvlkpu3894adsgascq96tjqr78gy6adlzsre3fqyrxdx8n68henrd6fzcgfwcltu3sesuh05nvxs2dd888";

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "bindings", derive(uniffi::Record))]
 #[derive(Debug, Serialize, Deserialize, Clone)]

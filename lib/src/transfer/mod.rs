@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bitcoin::{Transaction, secp256k1::PublicKey};
-use secp256k1_zkp::musig::{MusigPubNonce, BlindingFactor};
+use secp256k1_zkp::musig::{BlindingFactor, MusigPubNonce};
 use serde::{Deserialize, Serialize};
 
 use crate::wallet::BackupTx;
@@ -41,7 +41,7 @@ pub struct ReceiverBackupTransaction {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SerializedBackupTransaction {
     pub tx_n: u32,
-    pub  tx: String,
+    pub tx: String,
     pub client_public_nonce: String,
     pub server_public_nonce: String,
     pub client_public_key: String,
@@ -54,7 +54,7 @@ impl SenderBackupTransaction {
     pub fn serialize(&self) -> SerializedBackupTransaction {
         SerializedBackupTransaction {
             tx_n: self.tx_n,
-            tx: hex::encode(&bitcoin::consensus::encode::serialize(&self.tx)),
+            tx: hex::encode(bitcoin::consensus::encode::serialize(&self.tx)),
             client_public_nonce: hex::encode(&self.client_public_nonce),
             server_public_nonce: hex::encode(&self.server_public_nonce),
             client_public_key: self.client_public_key.to_string(),
@@ -71,11 +71,20 @@ impl SerializedBackupTransaction {
             statechain_id: "".to_string(),
             tx_n: self.tx_n,
             tx: bitcoin::consensus::encode::deserialize(&hex::decode(&self.tx).unwrap()).unwrap(),
-            client_public_nonce: MusigPubNonce::from_slice(hex::decode(&self.client_public_nonce).unwrap().as_slice()).unwrap(),
-            server_public_nonce: MusigPubNonce::from_slice(hex::decode(&self.server_public_nonce).unwrap().as_slice()).unwrap(),
+            client_public_nonce: MusigPubNonce::from_slice(
+                hex::decode(&self.client_public_nonce).unwrap().as_slice(),
+            )
+            .unwrap(),
+            server_public_nonce: MusigPubNonce::from_slice(
+                hex::decode(&self.server_public_nonce).unwrap().as_slice(),
+            )
+            .unwrap(),
             client_public_key: PublicKey::from_str(&self.client_public_key).unwrap(),
             server_public_key: PublicKey::from_str(&self.server_public_key).unwrap(),
-            blinding_factor: BlindingFactor::from_slice(hex::decode(&self.blinding_factor).unwrap().as_slice()).unwrap(),
+            blinding_factor: BlindingFactor::from_slice(
+                hex::decode(&self.blinding_factor).unwrap().as_slice(),
+            )
+            .unwrap(),
             recipient_address: self.recipient_address.clone(),
         }
     }

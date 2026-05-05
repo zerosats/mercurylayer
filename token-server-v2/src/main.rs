@@ -2,11 +2,15 @@ mod endpoints;
 mod server_config;
 mod server_state;
 
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
-use rocket::{serde::json::{Value, json}, Request, Response};
-use rocket::fairing::{Fairing, Info, Kind};
-use rocket::http::Header;
+use rocket::{
+    Request, Response,
+    fairing::{Fairing, Info, Kind},
+    http::Header,
+    serde::json::{Value, json},
+};
 use server_state::TokenServerState;
 
 #[catch(500)]
@@ -26,7 +30,6 @@ fn not_found(req: &Request) -> Value {
 
 #[rocket::main]
 async fn main() {
-
     let token_server = TokenServerState::new().await;
 
     let _ = rocket::build()
@@ -38,7 +41,7 @@ async fn main() {
         ])
         .register("/", catchers![
             not_found,
-            internal_error, 
+            internal_error,
             bad_request,
         ])
         .manage(token_server)
@@ -49,11 +52,11 @@ async fn main() {
         .await;
 }
 
-
-/// Catches all OPTION requests in order to get the CORS related Fairing triggered.
+/// Catches all OPTION requests in order to get the CORS related Fairing
+/// triggered.
 #[options("/<_..>")]
 fn all_options() {
-    /* Intentionally left empty */
+    // Intentionally left empty
 }
 
 pub struct Cors;
@@ -77,4 +80,3 @@ impl Fairing for Cors {
         response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
     }
 }
-

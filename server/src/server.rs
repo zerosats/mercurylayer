@@ -10,20 +10,16 @@ pub struct StateChainEntity {
 
 impl StateChainEntity {
     pub async fn new() -> Self {
-
         let config = ServerConfig::load();
         let connection_string = config.build_postgres_connection_string();
 
-        let pool = 
-            PgPoolOptions::new()
+        let pool = PgPoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(30))  // Increase the timeout duration
             .connect_with(connection_string)
             .await
             .unwrap();
 
-        StateChainEntity {
-            pool,
-        }
+        StateChainEntity { pool }
     }
 }

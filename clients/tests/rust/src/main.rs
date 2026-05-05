@@ -1,6 +1,5 @@
-
-pub mod electrs;
 pub mod bitcoin_core;
+pub mod electrs;
 pub mod ta01_sign_second_not_called;
 pub mod ta02_duplicate_deposits;
 pub mod ta03_multiple_deposits;
@@ -12,11 +11,10 @@ pub mod tb05_timelock;
 pub mod tm01_sender_double_spends;
 mod tv01;
 pub mod utils;
-use anyhow::{Result, Ok};
+use anyhow::{Ok, Result};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-
     tb01_simple_transfer::execute().await?;
     tb02_transfer_address_reuse::execute().await?;
     tb03_simple_atomic_transfer::execute().await?;

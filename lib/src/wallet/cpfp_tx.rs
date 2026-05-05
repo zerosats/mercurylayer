@@ -1,28 +1,42 @@
-use std::{str::FromStr, collections::BTreeMap};
+use std::{collections::BTreeMap, str::FromStr};
 
-use crate::{error::MercuryError, utils::get_network};
+use bitcoin::{
+    Address, Amount, Network, OutPoint, PrivateKey, ScriptBuf, Transaction, TxIn, TxOut, Txid,
+    Witness, absolute,
+    bip32::{DerivationPath, Fingerprint},
+    key::TapTweak,
+    psbt::{self, Input, Psbt, PsbtSighashType},
+    secp256k1,
+    sighash::{self, SighashCache, TapSighash, TapSighashType},
+    taproot::{self, TapLeafHash},
+};
+use secp256k1_zkp::{PublicKey, Secp256k1, SecretKey, XOnlyPublicKey};
 
 use super::{BackupTx, Coin};
-use bitcoin::{Transaction, Address, TxOut, Txid, OutPoint, TxIn, ScriptBuf, Witness, absolute, psbt::{Psbt, Input, PsbtSighashType, self}, bip32::{Fingerprint, DerivationPath}, Amount, Network, sighash::{TapSighashType, SighashCache, self, TapSighash}, taproot::{TapLeafHash, self}, secp256k1, key::TapTweak, PrivateKey};
-use secp256k1_zkp::{Secp256k1, SecretKey, PublicKey, XOnlyPublicKey};
+use crate::{error::MercuryError, utils::get_network};
 
 #[cfg_attr(feature = "bindings", uniffi::export)]
-pub fn latest_backup_tx_pays_to_user_pubkey(backup_txs: &Vec<BackupTx>, coin: &Coin, network: &str) -> Result<BackupTx, MercuryError> {
-
+pub fn latest_backup_tx_pays_to_user_pubkey(
+    backup_txs: &Vec<BackupTx>,
+    coin: &Coin,
+    network: &str,
+) -> Result<BackupTx, MercuryError> {
     let network = get_network(network)?;
 
-    let backup_address = Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
+    let backup_address =
+        Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
 
-    let backup_tx = backup_txs.iter()
+    let backup_tx = backup_txs
+        .iter()
         .filter_map(|bkp_tx| {
             let tx_bytes = hex::decode(&bkp_tx.tx).ok()?;
             let tx: Transaction = bitcoin::consensus::deserialize(&tx_bytes).ok()?;
-            
+
             if tx.output.len() != 1 {
                 return None;
             }
 
-            let output: &TxOut = tx.output.get(0)?;
+            let output: &TxOut = tx.output.first()?;
             if backup_address.script_pubkey() == output.script_pubkey {
                 Some(bkp_tx)
             } else {
@@ -32,19 +46,19 @@ pub fn latest_backup_tx_pays_to_user_pubkey(backup_txs: &Vec<BackupTx>, coin: &C
         .max_by_key(|bkp_tx| bkp_tx.tx_n);
 
     match backup_tx {
-        Some(tx) => {
-            return Ok(tx.clone());
-        },
-        None => {
-            return Err(MercuryError::NoBackupTransactionFound);
-        }
+        Some(tx) => Ok(tx.clone()),
+        None => Err(MercuryError::NoBackupTransactionFound),
     }
 }
 
-
 #[cfg_attr(feature = "bindings", uniffi::export)]
-pub fn create_cpfp_tx(backup_tx: &BackupTx, coin: &Coin, to_address: &str, fee_rate_sats_per_byte: f64, network: &str) -> Result<String, MercuryError> {
-
+pub fn create_cpfp_tx(
+    backup_tx: &BackupTx,
+    coin: &Coin,
+    to_address: &str,
+    fee_rate_sats_per_byte: f64,
+    network: &str,
+) -> Result<String, MercuryError> {
     let network = get_network(network)?;
 
     let tx_bytes = hex::decode(&backup_tx.tx)?;
@@ -54,9 +68,10 @@ pub fn create_cpfp_tx(backup_tx: &BackupTx, coin: &Coin, to_address: &str, fee_r
         return Err(MercuryError::UnkownNetwork);
     }
 
-    let output: &TxOut = tx.output.get(0).unwrap();
+    let output: &TxOut = tx.output.first().unwrap();
 
-    let backup_address = Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
+    let backup_address =
+        Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
 
     if backup_address.script_pubkey() != output.script_pubkey {
         return Err(MercuryError::BackupTransactionDoesNotPayUser);
@@ -69,11 +84,19 @@ pub fn create_cpfp_tx(backup_tx: &BackupTx, coin: &Coin, to_address: &str, fee_r
 
     let input_amount: u64 = output.value;
 
-    let outputs = vec![
-        TxOut { value: input_amount, script_pubkey: to_address.script_pubkey() },
-    ];
+    let outputs = vec![TxOut {
+        value: input_amount,
+        script_pubkey: to_address.script_pubkey(),
+    }];
 
-    let tx = create_transaction(&input_tx_hash, input_vout, &coin, input_amount, &outputs, network)?;
+    let tx = create_transaction(
+        &input_tx_hash,
+        input_vout,
+        coin,
+        input_amount,
+        &outputs,
+        network,
+    )?;
 
     let absolute_fee: u64 = (tx.vsize() as f64 * fee_rate_sats_per_byte).ceil() as u64;
 
@@ -83,27 +106,44 @@ pub fn create_cpfp_tx(backup_tx: &BackupTx, coin: &Coin, to_address: &str, fee_r
         return Err(MercuryError::FeeTooHigh);
     }
 
-    let outputs = vec![
-        TxOut { value: amount_out as u64, script_pubkey: to_address.script_pubkey() },
-    ];
+    let outputs = vec![TxOut {
+        value: amount_out as u64,
+        script_pubkey: to_address.script_pubkey(),
+    }];
 
-    let tx = create_transaction(&input_tx_hash, input_vout, &coin, input_amount, &outputs, network)?;
+    let tx = create_transaction(
+        &input_tx_hash,
+        input_vout,
+        coin,
+        input_amount,
+        &outputs,
+        network,
+    )?;
 
     let tx_bytes = bitcoin::consensus::encode::serialize(&tx);
     let encoded_signed_tx = hex::encode(tx_bytes);
-    
+
     Ok(encoded_signed_tx)
 }
 
-fn create_transaction(input_tx_hash: &Txid, input_vout: u32, coin: &Coin, input_amount: u64, outputs: &Vec<TxOut>, network: Network) -> Result<Transaction, MercuryError> {
-
+fn create_transaction(
+    input_tx_hash: &Txid,
+    input_vout: u32,
+    coin: &Coin,
+    input_amount: u64,
+    outputs: &Vec<TxOut>,
+    network: Network,
+) -> Result<Transaction, MercuryError> {
     let secp = Secp256k1::new();
 
-    let input_utxo = OutPoint { txid: input_tx_hash.clone(), vout: input_vout };
+    let input_utxo = OutPoint {
+        txid: *input_tx_hash,
+        vout: input_vout,
+    };
     let input = TxIn {
         previous_output: input_utxo,
         script_sig: ScriptBuf::new(),
-        sequence: bitcoin::Sequence(0xFFFFFFFF), // Ignore nSequence.
+        sequence: bitcoin::Sequence(0xffffffff), // Ignore nSequence.
         witness: Witness::default(),
     };
 
@@ -132,13 +172,17 @@ fn create_transaction(input_tx_hash: &Txid, input_vout: u32, coin: &Coin, input_
 
     let mut psbt_inputs = Vec::<Input>::new();
 
-    let backup_address = Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
+    let backup_address =
+        Address::from_str(coin.backup_address.as_str())?.require_network(network)?;
     let input_script_pubkey = backup_address.script_pubkey();
 
     let mut input = Input {
         witness_utxo: {
             let amount = Amount::from_sat(input_amount);
-            Some(TxOut { value: amount.to_sat(), script_pubkey: input_script_pubkey.clone() })
+            Some(TxOut {
+                value: amount.to_sat(),
+                script_pubkey: input_script_pubkey.clone(),
+            })
         },
         tap_key_origins: origins.clone(),
         ..Default::default()
@@ -148,17 +192,19 @@ fn create_transaction(input_tx_hash: &Txid, input_vout: u32, coin: &Coin, input_
     input.tap_internal_key = Some(input_x_only_public_key);
     psbt_inputs.push(input);
 
-
     psbt.inputs = psbt_inputs;
 
     // SIGNER
     let unsigned_tx = psbt.unsigned_tx.clone();
 
     let mut input_txouts = Vec::<TxOut>::new();
-    input_txouts.push(TxOut { value: input_amount, script_pubkey: input_script_pubkey });
+    input_txouts.push(TxOut {
+        value: input_amount,
+        script_pubkey: input_script_pubkey,
+    });
 
     let vout = 0;
-    let input = psbt.inputs.iter_mut().nth(vout).unwrap();
+    let input = psbt.inputs.get_mut(vout).unwrap();
 
     let hash_ty = input
         .sighash_type
@@ -167,7 +213,7 @@ fn create_transaction(input_tx_hash: &Txid, input_vout: u32, coin: &Coin, input_
 
     let hash = SighashCache::new(&unsigned_tx).taproot_key_spend_signature_hash(
         vout,
-        &sighash::Prevouts::All(&input_txouts.as_slice()),
+        &sighash::Prevouts::All(input_txouts.as_slice()),
         hash_ty,
     )?;
 
@@ -213,7 +259,9 @@ fn sign_psbt_taproot(
 ) {
     let keypair = secp256k1::KeyPair::from_seckey_slice(secp, secret_key.as_ref()).unwrap();
     let keypair = match leaf_hash {
-        None => keypair.tap_tweak(secp, psbt_input.tap_merkle_root).to_inner(),
+        None => keypair
+            .tap_tweak(secp, psbt_input.tap_merkle_root)
+            .to_inner(),
         Some(_) => keypair, // no tweak for script spend
     };
 
@@ -222,7 +270,9 @@ fn sign_psbt_taproot(
     let final_signature = taproot::Signature { sig, hash_ty };
 
     if let Some(lh) = leaf_hash {
-        psbt_input.tap_script_sigs.insert((pubkey, lh), final_signature);
+        psbt_input
+            .tap_script_sigs
+            .insert((pubkey, lh), final_signature);
     } else {
         psbt_input.tap_key_sig = Some(final_signature);
     }

@@ -1,10 +1,10 @@
 use sqlx::Row;
 
-pub async fn get_enclave_index_from_database(pool: &sqlx::PgPool, statechain_id: &str) -> Option<i32> {
-
-    let query = "SELECT enclave_index \
-        FROM statechain_data \
-        WHERE statechain_id = $1";
+pub async fn get_enclave_index_from_database(
+    pool: &sqlx::PgPool,
+    statechain_id: &str,
+) -> Option<i32> {
+    let query = "SELECT enclave_index FROM statechain_data WHERE statechain_id = $1";
 
     let row = sqlx::query(query)
         .bind(statechain_id)
@@ -12,9 +12,7 @@ pub async fn get_enclave_index_from_database(pool: &sqlx::PgPool, statechain_id:
         .await
         .unwrap();
 
-    if row.is_none() {
-        return None;
-    }
+    row.as_ref()?;
 
     let row = row.unwrap();
 
