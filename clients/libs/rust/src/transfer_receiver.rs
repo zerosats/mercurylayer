@@ -8,6 +8,8 @@ use bitcoin::{Address, Txid};
 use chrono::Utc;
 use electrum_client::ElectrumApi;
 use mercurylib::{
+    split::branch_txid,
+    transfer::TxOutpoint,
     utils::{InfoConfig, get_network},
     wallet::{Activity, BackupTx, Coin, CoinStatus, get_previous_outpoint},
 };
@@ -328,6 +330,24 @@ pub fn split_backup_transactions(backup_transactions: &Vec<BackupTx>) -> Vec<Vec
     result
 }
 
+fn get_funding_tx_hex_from_leaf_proof(
+    transfer_msg: &mercurylib::transfer::TransferMsg,
+    tx_outpoint: &TxOutpoint,
+) -> Option<String> {
+    let leaf_proof = transfer_msg.leaf_proof.as_ref()?;
+
+    leaf_proof
+        .branches
+        .iter()
+        .find(|branch| {
+            branch.child_vout == tx_outpoint.vout
+                && branch_txid(&branch.branch_tx)
+                    .map(|txid| txid == tx_outpoint.txid)
+                    .unwrap_or(false)
+        })
+        .map(|branch| branch.branch_tx.clone())
+}
+
 async fn validate_encrypted_message(
     client_config: &ClientConfig,
     coin: &Coin,
@@ -347,7 +367,10 @@ async fn validate_encrypted_message(
     for (index, backup_transactions) in grouped_backup_transactions.iter().enumerate() {
         let tx0_outpoint = mercurylib::transfer::receiver::get_tx0_outpoint(backup_transactions)?;
 
-        let tx0_hex = get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?;
+        let tx0_hex = match get_funding_tx_hex_from_leaf_proof(&transfer_msg, &tx0_outpoint) {
+            Some(tx_hex) => tx_hex,
+            None => get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?,
+        };
 
         if index == 0 {
             let is_transfer_signature_valid =
@@ -401,19 +424,21 @@ async fn validate_encrypted_message(
             return Err(anyhow::anyhow!("num_sigs is not correct".to_string()));
         }
 
-        let (is_tx0_output_unspent, _) = verify_tx0_output_is_unspent_and_confirmed(
-            &client_config.electrum_client,
-            &tx0_outpoint,
-            &tx0_hex,
-            network,
-            client_config.confirmation_target,
-        )
-        .await?;
+        if transfer_msg.leaf_proof.is_none() {
+            let (is_tx0_output_unspent, _) = verify_tx0_output_is_unspent_and_confirmed(
+                &client_config.electrum_client,
+                &tx0_outpoint,
+                &tx0_hex,
+                network,
+                client_config.confirmation_target,
+            )
+            .await?;
 
-        if !is_tx0_output_unspent {
-            return Err(anyhow::anyhow!(
-                "tx0 output is spent or not confirmed".to_string()
-            ));
+            if !is_tx0_output_unspent {
+                return Err(anyhow::anyhow!(
+                    "tx0 output is spent or not confirmed".to_string()
+                ));
+            }
         }
 
         let current_fee_rate_sats_per_byte =
@@ -471,20 +496,27 @@ async fn process_encrypted_message(
         if index == 0 {
             let tx0_outpoint =
                 mercurylib::transfer::receiver::get_tx0_outpoint(backup_transactions)?;
-            let tx0_hex = get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?;
+            let tx0_hex = match get_funding_tx_hex_from_leaf_proof(&transfer_msg, &tx0_outpoint) {
+                Some(tx_hex) => tx_hex,
+                None => get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?,
+            };
 
             let statechain_info =
                 utils::get_statechain_info(&transfer_msg.statechain_id, client_config).await?;
             let statechain_info = statechain_info.unwrap();
 
-            let (_, tx0_status) = verify_tx0_output_is_unspent_and_confirmed(
-                &client_config.electrum_client,
-                &tx0_outpoint,
-                &tx0_hex,
-                network,
-                client_config.confirmation_target,
-            )
-            .await?;
+            let (_, tx0_status) = if transfer_msg.leaf_proof.is_some() {
+                (true, CoinStatus::CONFIRMED)
+            } else {
+                verify_tx0_output_is_unspent_and_confirmed(
+                    &client_config.electrum_client,
+                    &tx0_outpoint,
+                    &tx0_hex,
+                    network,
+                    client_config.confirmation_target,
+                )
+                .await?
+            };
 
             let backup_tx = backup_transactions.last().unwrap();
 
@@ -549,6 +581,18 @@ async fn process_encrypted_message(
             coin.aggregated_pubkey = Some(new_key_info.aggregate_pubkey);
             coin.aggregated_address = Some(new_key_info.aggregate_address);
             coin.statechain_id = Some(transfer_msg.statechain_id.clone());
+            coin.root_statechain_id = transfer_msg
+                .leaf_proof
+                .as_ref()
+                .map(|proof| proof.root_statechain_id.clone())
+                .or_else(|| Some(transfer_msg.statechain_id.clone()));
+            coin.parent_statechain_id = transfer_msg
+                .leaf_proof
+                .as_ref()
+                .and_then(|proof| proof.branches.last())
+                .map(|branch| branch.parent_statechain_id.clone());
+            coin.leaf_proof = transfer_msg.leaf_proof.clone();
+            coin.is_split_leaf = transfer_msg.leaf_proof.is_some();
             coin.signed_statechain_id = Some(new_key_info.signed_statechain_id.clone());
             coin.amount = Some(new_key_info.amount);
             coin.utxo_txid = Some(tx0_outpoint.txid.clone());
@@ -581,7 +625,10 @@ async fn process_encrypted_message(
         } else {
             let tx0_outpoint =
                 mercurylib::transfer::receiver::get_tx0_outpoint(backup_transactions)?;
-            let tx0_hex = get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?;
+            let tx0_hex = match get_funding_tx_hex_from_leaf_proof(&transfer_msg, &tx0_outpoint) {
+                Some(tx_hex) => tx_hex,
+                None => get_tx0(&client_config.electrum_client, &tx0_outpoint.txid).await?,
+            };
 
             let first_backup_tx = backup_transactions.first().unwrap();
 

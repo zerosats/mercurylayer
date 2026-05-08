@@ -3,6 +3,7 @@ pub mod client_config;
 pub mod coin_status;
 pub mod deposit;
 pub mod lightning_latch;
+pub mod split;
 pub mod sqlite_manager;
 pub mod transaction;
 pub mod transfer_receiver;
@@ -14,6 +15,11 @@ pub mod withdraw;
 pub use mercurylib::{
     decode_transfer_address,
     deposit::TokenResponse,
+    split::{
+        BranchTxProof, LeafProof, SplitAbortRequest, SplitAbortResponse, SplitChild,
+        SplitFinalizeRequest, SplitFinalizeResponse, SplitInitChild, SplitInitRequest,
+        SplitInitResponse, StatechainTreeResponse, build_unsigned_branch_tx,
+    },
     transaction::{SignFirstRequestPayload, SignFirstResponsePayload, create_and_commit_nonces},
     transfer::sender::{
         TransferSenderRequestPayload, TransferSenderResponsePayload, create_transfer_signature,

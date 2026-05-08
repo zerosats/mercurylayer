@@ -2,6 +2,7 @@
 #define ENCLAVE_H
 
 #include "utils.h"
+#include <vector>
 
 namespace enclave {
 
@@ -19,6 +20,10 @@ namespace enclave {
         unsigned char partial_sig_data[32];
     };
 
+    struct SplitKeyResponse {
+        std::vector<NewKeyPairResponse> children;
+    };
+
     NewKeyPairResponse generate_new_keypair(unsigned char* seed);
     NewNonceResponse generate_nonce(unsigned char* seed, utils::chacha20_poly1305_encrypted_data *encrypted_keypair);
     PatialSignatureResponse partial_signature(
@@ -34,6 +39,12 @@ namespace enclave {
         utils::chacha20_poly1305_encrypted_data *old_encrypted_keypair,
         unsigned char* serialized_x1,
         unsigned char* serialized_t2);
+
+    SplitKeyResponse split_key(
+        unsigned char* seed,
+        utils::chacha20_poly1305_encrypted_data *old_encrypted_keypair,
+        unsigned char* serialized_t,
+        size_t child_count);
     
 
 } // namespace enclave

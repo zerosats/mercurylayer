@@ -6,6 +6,39 @@ use serde_json::{Value, json};
 
 use crate::server::StateChainEntity;
 
+fn purpose_or_regular(purpose: &Option<String>) -> String {
+    purpose.clone().unwrap_or_else(|| "regular".to_string())
+}
+
+async fn is_signing_allowed(
+    pool: &sqlx::PgPool,
+    statechain_id: &str,
+    purpose: &str,
+) -> Result<(), String> {
+    use crate::database::split::NodeStatus;
+
+    let status = crate::database::split::get_node_status(pool, statechain_id).await;
+    let status = status.ok_or_else(|| format!("Statechain {} not found.", statechain_id))?;
+
+    match (status, purpose) {
+        (NodeStatus::Active, "regular") => Ok(()),
+        (NodeStatus::PendingSplit, "split_branch") => Ok(()),
+        (NodeStatus::PendingChild, "split_child_backup") => Ok(()),
+        (NodeStatus::PendingSplit, _) => Err("Statechain is pending split and can only sign the \
+                                              split branch transaction."
+            .into()),
+        (NodeStatus::PendingChild, _) => {
+            Err("Statechain is a pending split child and can only sign its initial backup.".into())
+        }
+        (NodeStatus::Split, _) => Err("Statechain parent has already been split.".into()),
+        (NodeStatus::Withdrawn, _) => Err("Statechain has been withdrawn.".into()),
+        (NodeStatus::Unknown(status), _) => {
+            Err(format!("Unsupported statechain status: {}", status))
+        }
+        (NodeStatus::Active, _) => Err(format!("Unsupported signing purpose: {}", purpose)),
+    }
+}
+
 #[post("/sign/first", format = "json", data = "<sign_first_request_payload>")]
 pub async fn sign_first(
     statechain_entity: &State<StateChainEntity>,
@@ -14,8 +47,20 @@ pub async fn sign_first(
     let config = crate::server_config::ServerConfig::load();
 
     let statechain_id = sign_first_request_payload.0.statechain_id.clone();
+    let purpose = purpose_or_regular(&sign_first_request_payload.0.purpose);
+    let split_id = sign_first_request_payload.0.split_id.clone();
 
     let statechain_entity = statechain_entity.inner();
+
+    if let Err(message) =
+        is_signing_allowed(&statechain_entity.pool, &statechain_id, &purpose).await
+    {
+        let response_body = json!({
+            "message": message
+        });
+
+        return status::Custom(Status::BadRequest, Json(response_body));
+    }
 
     let enclave_index = crate::database::utils::get_enclave_index_from_database(
         &statechain_entity.pool,
@@ -65,6 +110,8 @@ pub async fn sign_first(
     let server_pubnonce_hex = crate::database::sign::get_server_pubnonce_from_null_challenge(
         &statechain_entity.pool,
         &statechain_id,
+        &purpose,
+        &split_id,
     )
     .await;
 
@@ -104,6 +151,8 @@ pub async fn sign_first(
         &statechain_entity.pool,
         &server_pubnonce_hex,
         &statechain_id,
+        &purpose,
+        &split_id,
     )
     .await;
 
@@ -124,8 +173,20 @@ pub async fn sign_second(
     >,
 ) -> status::Custom<Json<Value>> {
     let statechain_id = partial_signature_request_payload.0.statechain_id.clone();
+    let purpose = purpose_or_regular(&partial_signature_request_payload.0.purpose);
+    let split_id = partial_signature_request_payload.0.split_id.clone();
 
     let statechain_entity = statechain_entity.inner();
+
+    if let Err(message) =
+        is_signing_allowed(&statechain_entity.pool, &statechain_id, &purpose).await
+    {
+        let response_body = json!({
+            "message": message
+        });
+
+        return status::Custom(Status::BadRequest, Json(response_body));
+    }
 
     let config = crate::server_config::ServerConfig::load();
 
@@ -187,6 +248,8 @@ pub async fn sign_second(
         &server_pub_nonce,
         &challenge_str,
         &statechain_id,
+        &purpose,
+        &split_id,
     )
     .await;
 

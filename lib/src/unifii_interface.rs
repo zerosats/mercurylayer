@@ -56,11 +56,13 @@ fn ffi_to_transfer_msg(ffi_msg: FFITransferMsg) -> Result<TransferMsg, MercuryEr
     let mut t1_array = [0u8; 32];
     t1_array.copy_from_slice(&ffi_msg.t1);
     Ok(TransferMsg {
+        version: 1,
         statechain_id: ffi_msg.statechain_id,
         transfer_signature: ffi_msg.transfer_signature,
         backup_transactions: ffi_msg.backup_transactions,
         t1: t1_array,
         user_public_key: ffi_msg.user_public_key,
+        leaf_proof: None,
     })
 }
 

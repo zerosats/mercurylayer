@@ -84,7 +84,7 @@ pub async fn info_keylist(
     statechain_entity: &State<StateChainEntity>,
 ) -> status::Custom<Json<Value>> {
     let query = "\
-    SELECT server_public_key, statechain_id FROM statechain_data";
+    SELECT server_public_key, statechain_id FROM statechain_data WHERE status = 'active'";
 
     let rows = sqlx::query(query)
         .fetch_all(&statechain_entity.pool)

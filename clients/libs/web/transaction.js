@@ -34,11 +34,13 @@ const signSecond = async (clientConfig, partialSigRequest) => {
     return serverPartialSigHex;
 }
 
-const newTransaction = async(clientConfig, coin, toAddress, isWithdrawal, qtBackupTx, block_height, network, feeRateSatsPerByte, initlock, interval) => {
+const newTransaction = async(clientConfig, coin, toAddress, isWithdrawal, qtBackupTx, block_height, network, feeRateSatsPerByte, initlock, interval, purpose = null, splitId = null) => {
 
     await initWasm(wasmUrl);
 
     let coin_nonce = mercury_wasm.createAndCommitNonces(coin);
+    coin_nonce.sign_first_request_payload.purpose = purpose;
+    coin_nonce.sign_first_request_payload.split_id = splitId;
 
     let server_pubnonce = await signFirst(clientConfig, coin_nonce.sign_first_request_payload);
 
@@ -72,6 +74,8 @@ const newTransaction = async(clientConfig, coin, toAddress, isWithdrawal, qtBack
         isWithdrawal);
 
     const serverPartialSigRequest = partialSigRequest.partial_signature_request_payload;
+    serverPartialSigRequest.purpose = purpose;
+    serverPartialSigRequest.split_id = splitId;
 
     const serverPartialSig = await signSecond(clientConfig, serverPartialSigRequest);
 

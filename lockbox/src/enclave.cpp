@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <array>
 #include "enclave.h"
 #include <openssl/rand.h>
 #include <stdexcept>
@@ -275,6 +276,87 @@ namespace enclave {
 
             return response;
 
+        }
+
+    SplitKeyResponse split_key(
+        unsigned char* seed,
+        utils::chacha20_poly1305_encrypted_data *old_encrypted_keypair,
+        unsigned char* serialized_t,
+        size_t child_count) {
+
+            if (child_count < 2) {
+                throw std::runtime_error("split_key requires at least two children");
+            }
+
+            SplitKeyResponse response;
+            response.children.reserve(child_count);
+
+            secp256k1_keypair parent_keypair;
+            memset(parent_keypair.data, 0, sizeof(parent_keypair.data));
+
+            int status = decrypt_data(old_encrypted_keypair, seed, parent_keypair.data, sizeof(parent_keypair.data));
+            if (status != 0) {
+                throw std::runtime_error("\nSeed ecryption failed");
+            }
+
+            secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+
+            unsigned char remaining_seckey[32];
+            int return_val = secp256k1_keypair_sec(ctx, remaining_seckey, &parent_keypair);
+            assert(return_val);
+
+            return_val = secp256k1_ec_seckey_tweak_add(ctx, remaining_seckey, serialized_t);
+            assert(return_val);
+
+            std::vector<std::array<unsigned char, 32>> child_seckeys;
+            child_seckeys.resize(child_count);
+
+            for (size_t i = 0; i < child_count - 1; i++) {
+                do {
+                    if (RAND_bytes(child_seckeys[i].data(), 32) != 1) {
+                        throw std::runtime_error("Failed to generate random bytes");
+                    }
+                } while (!secp256k1_ec_seckey_verify(ctx, child_seckeys[i].data()));
+
+                unsigned char negated_child[32];
+                memcpy(negated_child, child_seckeys[i].data(), 32);
+                return_val = secp256k1_ec_seckey_negate(ctx, negated_child);
+                assert(return_val);
+                return_val = secp256k1_ec_seckey_tweak_add(ctx, remaining_seckey, negated_child);
+                assert(return_val);
+            }
+
+            memcpy(child_seckeys[child_count - 1].data(), remaining_seckey, 32);
+            if (!secp256k1_ec_seckey_verify(ctx, child_seckeys[child_count - 1].data())) {
+                throw std::runtime_error("Final split child secret key is invalid");
+            }
+
+            for (size_t i = 0; i < child_count; i++) {
+                NewKeyPairResponse child_response;
+                memset(child_response.server_pubkey, 0, 33);
+                utils::initialize_encrypted_data(child_response.encrypted_data, sizeof(secp256k1_keypair));
+
+                secp256k1_keypair child_keypair;
+                return_val = secp256k1_keypair_create(ctx, &child_keypair, child_seckeys[i].data());
+                assert(return_val);
+
+                secp256k1_pubkey child_pubkey;
+                return_val = secp256k1_keypair_pub(ctx, &child_pubkey, &child_keypair);
+                assert(return_val);
+
+                size_t len = sizeof(child_response.server_pubkey);
+                return_val = secp256k1_ec_pubkey_serialize(ctx, child_response.server_pubkey, &len, &child_pubkey, SECP256K1_EC_COMPRESSED);
+                assert(return_val);
+                assert(len == sizeof(child_response.server_pubkey));
+
+                encrypt_data(&child_response.encrypted_data, seed, child_keypair.data, sizeof(secp256k1_keypair::data));
+
+                response.children.push_back(child_response);
+            }
+
+            secp256k1_context_destroy(ctx);
+
+            return response;
         }
 
 } // namespace enclave

@@ -188,6 +188,109 @@ namespace lockbox {
             return crow::response{result};
     }
 
+    crow::response split_prepare(
+        const std::string& split_id,
+        const std::string& parent_statechain_id,
+        std::vector<unsigned char>& serialized_t,
+        const std::vector<std::string>& child_statechain_ids,
+        unsigned char *seed) {
+
+            std::string error_message;
+
+            std::vector<std::pair<std::string, std::string>> existing_children;
+            if (db_manager::get_split_child_public_keys(split_id, existing_children, error_message) && !existing_children.empty()) {
+                crow::json::wvalue result;
+                for (size_t i = 0; i < existing_children.size(); i++) {
+                    result["children"][i]["statechain_id"] = existing_children[i].first;
+                    result["children"][i]["server_pubkey"] = existing_children[i].second;
+                }
+                return crow::response{result};
+            }
+
+            auto old_encrypted_keypair = std::make_unique<utils::chacha20_poly1305_encrypted_data>();
+            auto encrypted_secnonce = std::make_unique<utils::chacha20_poly1305_encrypted_data>();
+            encrypted_secnonce.reset();
+
+            bool data_loaded = db_manager::load_generated_key_data(
+                parent_statechain_id,
+                old_encrypted_keypair,
+                encrypted_secnonce,
+                nullptr,
+                0,
+                error_message
+            );
+
+            if (!data_loaded) {
+                error_message = "Failed to load parent key data: " + error_message;
+                return crow::response(500, error_message);
+            }
+
+            if (old_encrypted_keypair == nullptr) {
+                return crow::response(400, "Empty parent encrypted keypair!");
+            }
+
+            auto response = enclave::split_key(
+                seed,
+                old_encrypted_keypair.get(),
+                serialized_t.data(),
+                child_statechain_ids.size());
+
+            crow::json::wvalue result;
+
+            for (size_t i = 0; i < response.children.size(); i++) {
+                bool data_saved = db_manager::save_pending_split_child_key(
+                    response.children[i].encrypted_data,
+                    response.children[i].server_pubkey,
+                    sizeof(response.children[i].server_pubkey),
+                    child_statechain_ids[i],
+                    split_id,
+                    error_message);
+
+                if (!data_saved) {
+                    error_message = "Failed to save split child key: " + error_message;
+                    return crow::response(500, error_message);
+                }
+
+                std::string server_pubkey_hex = utils::key_to_string(response.children[i].server_pubkey, sizeof(response.children[i].server_pubkey));
+                result["children"][i]["statechain_id"] = child_statechain_ids[i];
+                result["children"][i]["server_pubkey"] = server_pubkey_hex;
+            }
+
+            return crow::response{result};
+    }
+
+    crow::response split_finalize(
+        const std::string& split_id,
+        const std::string& parent_statechain_id) {
+
+            std::string error_message;
+            bool finalized = db_manager::finalize_split_keys(split_id, parent_statechain_id, error_message);
+
+            if (!finalized) {
+                error_message = "Failed to finalize split keys: " + error_message;
+                return crow::response(500, error_message);
+            }
+
+            crow::json::wvalue result({{"finalized", true}});
+            return crow::response{result};
+    }
+
+    crow::response split_abort(
+        const std::string& split_id,
+        const std::string& parent_statechain_id) {
+
+            std::string error_message;
+            bool aborted = db_manager::abort_split_keys(split_id, parent_statechain_id, error_message);
+
+            if (!aborted) {
+                error_message = "Failed to abort split keys: " + error_message;
+                return crow::response(500, error_message);
+            }
+
+            crow::json::wvalue result({{"aborted", true}});
+            return crow::response{result};
+    }
+
     std::string getKeyManager() {
         return utils::getStringConfigVar(utils::KEY_MANAGER);
     }
@@ -374,6 +477,86 @@ namespace lockbox {
                 }
 
                 return keyupdate(statechain_id, serialized_t2, serialized_x1, seed.data());
+        });
+
+        CROW_ROUTE(app, "/split/prepare")
+            .methods("POST"_method)([&seed](const crow::request& req) {
+
+                auto req_body = crow::json::load(req.body);
+                if (!req_body)
+                    return crow::response(400);
+
+                if (req_body.count("split_id") == 0 ||
+                    req_body.count("parent_statechain_id") == 0 ||
+                    req_body.count("t") == 0 ||
+                    req_body.count("children") == 0) {
+                    return crow::response(400, "Invalid parameters. They must be 'split_id', 'parent_statechain_id', 't' and 'children'.");
+                }
+
+                std::string split_id = req_body["split_id"].s();
+                std::string parent_statechain_id = req_body["parent_statechain_id"].s();
+                std::string t_hex = req_body["t"].s();
+
+                if (t_hex.substr(0, 2) == "0x") {
+                    t_hex = t_hex.substr(2);
+                }
+
+                std::vector<unsigned char> serialized_t = utils::ParseHex(t_hex);
+
+                if (serialized_t.size() != 32) {
+                    return crow::response(400, "Invalid t length. Must be 32 bytes!");
+                }
+
+                std::vector<std::string> child_statechain_ids;
+                auto children = req_body["children"];
+                for (size_t i = 0; i < children.size(); i++) {
+                    if (children[i].count("statechain_id") == 0) {
+                        return crow::response(400, "Each child must include statechain_id.");
+                    }
+                    child_statechain_ids.push_back(children[i]["statechain_id"].s());
+                }
+
+                if (child_statechain_ids.size() < 2) {
+                    return crow::response(400, "A split must contain at least two children.");
+                }
+
+                return split_prepare(split_id, parent_statechain_id, serialized_t, child_statechain_ids, seed.data());
+        });
+
+        CROW_ROUTE(app, "/split/finalize")
+            .methods("POST"_method)([](const crow::request& req) {
+
+                auto req_body = crow::json::load(req.body);
+                if (!req_body)
+                    return crow::response(400);
+
+                if (req_body.count("split_id") == 0 ||
+                    req_body.count("parent_statechain_id") == 0) {
+                    return crow::response(400, "Invalid parameters. They must be 'split_id' and 'parent_statechain_id'.");
+                }
+
+                std::string split_id = req_body["split_id"].s();
+                std::string parent_statechain_id = req_body["parent_statechain_id"].s();
+
+                return split_finalize(split_id, parent_statechain_id);
+        });
+
+        CROW_ROUTE(app, "/split/abort")
+            .methods("POST"_method)([](const crow::request& req) {
+
+                auto req_body = crow::json::load(req.body);
+                if (!req_body)
+                    return crow::response(400);
+
+                if (req_body.count("split_id") == 0 ||
+                    req_body.count("parent_statechain_id") == 0) {
+                    return crow::response(400, "Invalid parameters. They must be 'split_id' and 'parent_statechain_id'.");
+                }
+
+                std::string split_id = req_body["split_id"].s();
+                std::string parent_statechain_id = req_body["parent_statechain_id"].s();
+
+                return split_abort(split_id, parent_statechain_id);
         });
 
         CROW_ROUTE(app,"/delete_statechain/<string>")

@@ -8,6 +8,7 @@ import broadcast_backup_tx from './broadcast_backup_tx.js';
 import transfer_send from './transfer_send.js';
 import transfer_receive from './transfer_receive.js';
 import lightningLatch from './lightning-latch.js';
+import split from './split.js';
 import { v4 as uuidv4 } from 'uuid';
 import utils from './utils.js';
 
@@ -55,7 +56,11 @@ const listStatecoins = async (clientConfig, walletName) => {
       address: coin.address,
       aggregated_address: coin.aggregated_address,
       locktime: coin.locktime,
-      duplicate_index: coin.duplicate_index
+      duplicate_index: coin.duplicate_index,
+      root_statechain_id: coin.root_statechain_id,
+      parent_statechain_id: coin.parent_statechain_id,
+      logical_tx_n_offset: coin.logical_tx_n_offset,
+      is_split_leaf: coin.is_split_leaf
   }));
 
   return coins;
@@ -153,5 +158,9 @@ export default {
   getPreviousOutpoint: utils.getPreviousOutpoint,
   getBlockheight: utils.getBlockheight,
   splitBackupTransactions: transfer_receive.splitBackupTransactions,
+  splitInit: split.splitInit,
+  splitFinalize: split.splitFinalize,
+  splitAbort: split.splitAbort,
+  getStatechainTree: split.getStatechainTree,
   infoConfig: utils.infoConfig,
 };

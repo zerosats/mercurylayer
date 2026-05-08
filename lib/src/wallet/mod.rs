@@ -8,7 +8,7 @@ use bitcoin::Transaction;
 use secp256k1_zkp::rand::{self, Rng};
 use serde::{Deserialize, Serialize};
 
-use crate::{MercuryError, transfer::TxOutpoint, utils::ServerConfig};
+use crate::{MercuryError, split::LeafProof, transfer::TxOutpoint, utils::ServerConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "bindings", derive(uniffi::Record))]
@@ -105,6 +105,16 @@ pub struct Coin {
     pub withdrawal_address: Option<String>,
     pub status: CoinStatus,
     pub duplicate_index: u32,
+    #[serde(default)]
+    pub root_statechain_id: Option<String>,
+    #[serde(default)]
+    pub parent_statechain_id: Option<String>,
+    #[serde(default)]
+    pub leaf_proof: Option<LeafProof>,
+    #[serde(default)]
+    pub logical_tx_n_offset: u32,
+    #[serde(default)]
+    pub is_split_leaf: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

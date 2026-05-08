@@ -84,7 +84,8 @@ pub async fn insert_new_deposit(
     enclave_index: i32,
 ) {
     let query = "INSERT INTO statechain_data (token_id, auth_xonly_public_key, server_public_key, \
-                 statechain_id, enclave_index) VALUES ($1, $2, $3, $4, $5)";
+                 statechain_id, enclave_index, root_statechain_id, status, logical_tx_n_offset) \
+                 VALUES ($1, $2, $3, $4, $5, $4, 'active', 0)";
 
     let _ = sqlx::query(query)
         .bind(token_id)

@@ -153,6 +153,11 @@ impl Wallet {
             withdrawal_address: None,
             status: CoinStatus::INITIALISED,
             duplicate_index: 0,
+            root_statechain_id: None,
+            parent_statechain_id: None,
+            leaf_proof: None,
+            logical_tx_n_offset: 0,
+            is_split_leaf: false,
         };
 
         Ok(coin)

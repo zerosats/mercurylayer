@@ -9,12 +9,18 @@ pub mod tb03_simple_atomic_transfer;
 pub mod tb04_simple_lightning_latch;
 pub mod tb05_timelock;
 pub mod tm01_sender_double_spends;
+pub mod ts01_split;
 mod tv01;
 pub mod utils;
 use anyhow::{Ok, Result};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("split") {
+        ts01_split::execute().await?;
+        return Ok(());
+    }
+
     tb01_simple_transfer::execute().await?;
     tb02_transfer_address_reuse::execute().await?;
     tb03_simple_atomic_transfer::execute().await?;

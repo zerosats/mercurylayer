@@ -150,6 +150,15 @@ pub async fn execute(
     // update_backup_txs(&client_config.pool, &coin.statechain_id.as_ref().unwrap(),
     // &backup_txs).await?;
 
+    if let Some(leaf_proof) = &coin.leaf_proof {
+        for branch in &leaf_proof.branches {
+            let branch_tx_bytes = hex::decode(&branch.branch_tx)?;
+            let _ = client_config
+                .electrum_client
+                .transaction_broadcast_raw(&branch_tx_bytes);
+        }
+    }
+
     let tx_bytes = hex::decode(&signed_tx)?;
     let txid = client_config
         .electrum_client

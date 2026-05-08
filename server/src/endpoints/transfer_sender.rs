@@ -127,6 +127,16 @@ pub async fn transfer_sender(
         return status::Custom(Status::InternalServerError, Json(response_body));
     }
 
+    if crate::database::split::get_node_status(&statechain_entity.pool, &statechain_id).await
+        != Some(crate::database::split::NodeStatus::Active)
+    {
+        let response_body = json!({
+            "message": "Only active leaves can be transferred."
+        });
+
+        return status::Custom(Status::BadRequest, Json(response_body));
+    }
+
     let batch_transfer_validation_result =
         validate_batch_transfer(statechain_entity, &statechain_id, &batch_id).await;
 

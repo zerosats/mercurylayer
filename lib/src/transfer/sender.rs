@@ -119,11 +119,13 @@ pub fn create_transfer_update_msg(
     let signed_statechain_id = coin.signed_statechain_id.as_ref().unwrap();
 
     let transfer_msg = TransferMsg {
+        version: 2,
         statechain_id: statechain_id.to_string(),
         transfer_signature: transfer_signature.to_string(),
         backup_transactions: backup_transactions.to_owned(),
         t1: t1.secret_bytes(),
         user_public_key: client_public_key,
+        leaf_proof: coin.leaf_proof.clone(),
     };
 
     let transfer_msg_json = json!(&transfer_msg);

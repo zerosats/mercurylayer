@@ -16,6 +16,44 @@ $ docker exec $container_id cli generatetoaddress 101 "$address"
 
 4. `cargo run`
 
+# Running Rust split tests without building lockbox
+
+Use the split shim override when testing statechain tree splitting on a machine where building the local C++ lockbox is too expensive. The shim sits at `lockbox:18080`, proxies normal lockbox signing routes to the published `mercurylayer/lockbox:latest` image, and handles only the split lifecycle routes.
+
+```bash
+$ docker compose \
+  -f docker-compose-token-servers.yml \
+  -f docker-compose-split-shim.yml \
+  up --build
+```
+
+Then initialize the regtest chain:
+
+```bash
+$ container_id=$(docker ps -qf "name=esplora-container")
+$ wallet_name="esplora_wallet"
+$ docker exec $container_id cli createwallet $wallet_name || true
+$ address=$(docker exec $container_id cli getnewaddress)
+$ docker exec $container_id cli generatetoaddress 101 "$address"
+```
+
+Run the existing Rust regression tests:
+
+```bash
+$ cd clients/tests/rust/
+$ rm -f wallet.db wallet.db-shm wallet.db-wal
+$ ML_NETWORK=regtest cargo run
+```
+
+Run the split harness:
+
+```bash
+$ cd clients/tests/rust/
+$ ML_NETWORK=regtest cargo run -- split
+```
+
+The split harness creates a 1500 sat parent coin, splits it into 1000 and 400 sat children with a 100 sat branch fee, signs the branch transaction, signs each child backup transaction, finalizes the split, fetches tree metadata, transfers the first child, and withdraws the second child. This shim validates the Mercury server/client tree flow, status guards, branch signing, child backup signing, finalize/abort handling, and tree metadata. It does not validate the real lockbox key-sum invariant or parent key tombstoning; those still require the real split-enabled C++ lockbox.
+
 # Running Web tests
 
 1. `$ docker compose -f docker-compose-token-servers.yml up --build` to run the Mercury and token servers. This also starts a Esplora node.

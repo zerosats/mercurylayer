@@ -4,7 +4,7 @@ use bitcoin::{Transaction, secp256k1::PublicKey};
 use secp256k1_zkp::musig::{BlindingFactor, MusigPubNonce};
 use serde::{Deserialize, Serialize};
 
-use crate::wallet::BackupTx;
+use crate::{split::LeafProof, wallet::BackupTx};
 
 pub mod receiver;
 pub mod sender;
@@ -101,11 +101,19 @@ pub struct TransferMsg1 {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TransferMsg {
+    #[serde(default = "default_transfer_msg_version")]
+    pub version: u32,
     pub statechain_id: String,
     pub transfer_signature: String,
     pub backup_transactions: Vec<BackupTx>,
     pub t1: [u8; 32],
     pub user_public_key: String,
+    #[serde(default)]
+    pub leaf_proof: Option<LeafProof>,
+}
+
+fn default_transfer_msg_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Serialize, Deserialize)]

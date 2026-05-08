@@ -1,0 +1,28 @@
+services:
+  lockbox:
+    image: node:20-alpine
+    container_name: mercurylayer-lockbox-shim-1
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      REAL_LOCKBOX_URL: http://lockbox-real:18081
+      LOCKBOX_SHIM_PORT: 18080
+    volumes:
+      - ./lockbox-shim:/app:ro
+    depends_on:
+      - lockbox-real
+    ports:
+      - "18080:18080"
+
+  lockbox-real:
+    image: mercurylayer/lockbox:latest
+    container_name: mercurylayer-lockbox-real-1
+    depends_on:
+      - db_lockbox
+    environment:
+      LOCKBOX_DATABASE_URL: postgres://postgres:postgres@db_lockbox:5432/enclave
+      LOCKBOX_PORT: 18081
+      KEY_MANAGER: filesystem
+      SEED_FILEPATH: /data/seed
+    volumes:
+      - lockbox_seed_data:/data

@@ -33,6 +33,10 @@ use crate::{
 pub struct SignFirstRequestPayload {
     pub statechain_id: String,
     pub signed_statechain_id: String,
+    #[serde(default)]
+    pub purpose: Option<String>,
+    #[serde(default)]
+    pub split_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,6 +73,10 @@ pub struct PartialSignatureRequestPayload {
     pub session: String,
     pub signed_statechain_id: String,
     pub server_pub_nonce: String,
+    #[serde(default)]
+    pub purpose: Option<String>,
+    #[serde(default)]
+    pub split_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -107,6 +115,8 @@ pub fn create_and_commit_nonces(coin: &Coin) -> core::result::Result<CoinNonce, 
     let sign_first_request_payload = SignFirstRequestPayload {
         statechain_id: coin.statechain_id.as_ref().unwrap().to_owned(),
         signed_statechain_id: coin.signed_statechain_id.as_ref().unwrap().to_owned(),
+        purpose: None,
+        split_id: None,
     };
 
     Ok(CoinNonce {
@@ -321,6 +331,38 @@ pub fn get_musig_session(
     Ok(session)
 }
 
+#[cfg_attr(feature = "bindings", uniffi::export)]
+pub fn get_partial_sig_request_for_unsigned_tx(
+    coin: &Coin,
+    encoded_unsigned_tx: String,
+    input_amount: u64,
+    input_address: String,
+    network: String,
+) -> core::result::Result<PartialSignatureMsg1, MercuryError> {
+    let network = utils::get_network(&network)?;
+
+    let tx_bytes = hex::decode(&encoded_unsigned_tx)?;
+    let unsigned_tx: Transaction = bitcoin::consensus::encode::deserialize(&tx_bytes)?;
+
+    if unsigned_tx.input.len() != 1 {
+        return Err(MercuryError::MoreThanOneInputError);
+    }
+
+    let input_address = Address::from_str(&input_address)?.require_network(network)?;
+    let input_scriptpubkey = input_address.script_pubkey();
+
+    let hash = SighashCache::new(&unsigned_tx).taproot_key_spend_signature_hash(
+        0,
+        &sighash::Prevouts::All(&[TxOut {
+            value: input_amount,
+            script_pubkey: input_scriptpubkey,
+        }]),
+        TapSighashType::All,
+    )?;
+
+    calculate_musig_session(coin, hash, encoded_unsigned_tx)
+}
+
 pub fn calculate_musig_session(
     coin: &Coin,
     hash: TapSighash,
@@ -411,6 +453,8 @@ pub fn calculate_musig_session(
         session: hex::encode(blinded_session.serialize()),
         signed_statechain_id: signed_statechain_id.to_string(),
         server_pub_nonce: server_pubnonce_hex,
+        purpose: None,
+        split_id: None,
     };
 
     let client_partial_sig_hex = hex::encode(client_partial_sig.serialize());

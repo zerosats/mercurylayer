@@ -25,9 +25,42 @@ pub async fn new_transaction(
     initlock: u32,
     interval: u32,
 ) -> Result<String> {
+    new_transaction_with_signing_purpose(
+        client_config,
+        coin,
+        to_address,
+        qt_backup_tx,
+        is_withdrawal,
+        block_height,
+        network,
+        fee_rate_sats_per_byte,
+        initlock,
+        interval,
+        None,
+        None,
+    )
+    .await
+}
+
+pub async fn new_transaction_with_signing_purpose(
+    client_config: &ClientConfig,
+    coin: &mut Coin,
+    to_address: &str,
+    qt_backup_tx: u32,
+    is_withdrawal: bool,
+    block_height: Option<u32>,
+    network: &str,
+    fee_rate_sats_per_byte: f64,
+    initlock: u32,
+    interval: u32,
+    purpose: Option<String>,
+    split_id: Option<String>,
+) -> Result<String> {
     // TODO: validate address first
 
-    let coin_nonce = mercurylib::transaction::create_and_commit_nonces(coin)?;
+    let mut coin_nonce = mercurylib::transaction::create_and_commit_nonces(coin)?;
+    coin_nonce.sign_first_request_payload.purpose = purpose.clone();
+    coin_nonce.sign_first_request_payload.split_id = split_id.clone();
     coin.secret_nonce = Some(coin_nonce.secret_nonce);
     coin.public_nonce = Some(coin_nonce.public_nonce);
     coin.blinding_factor = Some(coin_nonce.blinding_factor);
@@ -59,7 +92,9 @@ pub async fn new_transaction(
         is_withdrawal,
     )?;
 
-    let server_partial_sig_request = partial_sig_request.partial_signature_request_payload;
+    let mut server_partial_sig_request = partial_sig_request.partial_signature_request_payload;
+    server_partial_sig_request.purpose = purpose;
+    server_partial_sig_request.split_id = split_id;
 
     let server_partial_sig = sign_second(client_config, &server_partial_sig_request).await?;
 
@@ -156,4 +191,54 @@ pub async fn sign_second(
         MusigPartialSignature::from_slice(server_partial_sig_bytes.as_slice())?;
 
     Ok(server_partial_sig)
+}
+
+pub async fn sign_unsigned_tx_with_purpose(
+    client_config: &ClientConfig,
+    coin: &mut Coin,
+    encoded_unsigned_tx: String,
+    input_amount: u64,
+    input_address: String,
+    network: &str,
+    purpose: String,
+    split_id: Option<String>,
+) -> Result<String> {
+    let mut coin_nonce = mercurylib::transaction::create_and_commit_nonces(coin)?;
+    coin_nonce.sign_first_request_payload.purpose = Some(purpose.clone());
+    coin_nonce.sign_first_request_payload.split_id = split_id.clone();
+    coin.secret_nonce = Some(coin_nonce.secret_nonce);
+    coin.public_nonce = Some(coin_nonce.public_nonce);
+    coin.blinding_factor = Some(coin_nonce.blinding_factor);
+
+    let server_public_nonce =
+        sign_first(client_config, &coin_nonce.sign_first_request_payload).await?;
+
+    coin.server_public_nonce = Some(server_public_nonce);
+
+    let partial_sig_request = mercurylib::transaction::get_partial_sig_request_for_unsigned_tx(
+        coin,
+        encoded_unsigned_tx,
+        input_amount,
+        input_address,
+        network.to_string(),
+    )?;
+
+    let mut server_partial_sig_request = partial_sig_request.partial_signature_request_payload;
+    server_partial_sig_request.purpose = Some(purpose);
+    server_partial_sig_request.split_id = split_id;
+
+    let server_partial_sig = sign_second(client_config, &server_partial_sig_request).await?;
+
+    let signature = create_signature(
+        partial_sig_request.msg,
+        partial_sig_request.client_partial_sig,
+        hex::encode(server_partial_sig.serialize()),
+        partial_sig_request.encoded_session,
+        partial_sig_request.output_pubkey,
+    )?;
+
+    Ok(new_backup_transaction(
+        partial_sig_request.encoded_unsigned_tx,
+        signature,
+    )?)
 }

@@ -6,8 +6,8 @@ pub async fn get_statechain_info(pool: &sqlx::PgPool, statechain_id: &str) -> Ve
     let mut result = Vec::<StatechainInfo>::new();
 
     let query = "\
-        SELECT statechain_id, server_pubnonce, challenge, tx_n FROM statechain_signature_data \
-                 WHERE statechain_id = $1 ORDER BY created_at ASC";
+        SELECT statechain_id, server_pubnonce, COALESCE(challenge, ''), tx_n FROM \
+                 statechain_signature_data WHERE statechain_id = $1 ORDER BY created_at ASC";
 
     let rows = sqlx::query(query)
         .bind(statechain_id)

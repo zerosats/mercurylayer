@@ -53,6 +53,16 @@ pub async fn withdraw_complete(
         return status::Custom(Status::InternalServerError, Json(response_body));
     }
 
+    if crate::database::split::get_node_status(&statechain_entity.pool, &statechain_id).await
+        != Some(crate::database::split::NodeStatus::Active)
+    {
+        let response_body = json!({
+            "message": "Only active leaves can be withdrawn."
+        });
+
+        return status::Custom(Status::BadRequest, Json(response_body));
+    }
+
     let config = crate::server_config::ServerConfig::load();
 
     let enclave_index = crate::database::utils::get_enclave_index_from_database(
@@ -91,6 +101,12 @@ pub async fn withdraw_complete(
         return status::Custom(Status::InternalServerError, Json(response_body));
     };
 
+    crate::database::split::set_node_status(
+        &statechain_entity.pool,
+        &statechain_id,
+        crate::database::split::NodeStatus::Withdrawn,
+    )
+    .await;
     delete_statechain_db(&statechain_entity.pool, &statechain_id).await;
 
     let response_body = json!({

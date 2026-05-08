@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+bitcoin = { workspace = true }
+mercurylib = { workspace = true }
 mercuryrustlib = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -15,3 +17,4 @@ electrum-client = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+secp256k1-zkp = { workspace = true }

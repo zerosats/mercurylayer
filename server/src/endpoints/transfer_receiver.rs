@@ -301,6 +301,16 @@ pub async fn transfer_receiver(
     let t2 = transfer_receiver_request_payload.t2.clone();
     let auth_sign = transfer_receiver_request_payload.auth_sig.clone();
 
+    if crate::database::split::get_node_status(&statechain_entity.pool, &statechain_id).await
+        != Some(crate::database::split::NodeStatus::Active)
+    {
+        let response_body = json!({
+            "message": "Only active leaves can complete transfer receive."
+        });
+
+        return status::Custom(Status::BadRequest, Json(response_body));
+    }
+
     let signed_message = Signature::from_str(&auth_sign).unwrap();
     let msg = Message::from_hashed_data::<sha256::Hash>(t2.as_bytes());
 

@@ -1,5 +1,6 @@
 pub mod deposit;
 pub mod error;
+pub mod split;
 pub mod transaction;
 pub mod transfer;
 pub mod unifii_interface;
