@@ -9,7 +9,6 @@ import transfer_send from './transfer_send.js';
 import transfer_receive from './transfer_receive.js';
 import lightningLatch from './lightning-latch.js';
 import { v4 as uuidv4 } from 'uuid';
-import { decodeInvoice } from '../../tests/web/test-utils.js';
 import utils from './utils.js';
 
 const greet = async () => {
@@ -132,13 +131,7 @@ const getPaymentHash = async (clientConfig, batchId) => {
 }
 
 const verifyInvoice = async (clientConfig, batchId, paymentRequest) => {
-
-  const decodedInvoice = await decodeInvoice(paymentRequest);
-  let paymentHash = await getPaymentHash(clientConfig, batchId);
-  console.log("Decoded invoice: ", decodedInvoice);
-
-  const paymentHashFromInvoice = decodedInvoice.tags.find(tag => tag.tagName === "payment_hash")?.data;
-  return paymentHash === paymentHashFromInvoice;
+  throw new Error("verifyInvoice is not available in the browser runtime package yet.");
 }
 
 export default { 

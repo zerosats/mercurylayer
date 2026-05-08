@@ -11,7 +11,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Create a working directory
 WORKDIR /mercurylayer
 
-RUN echo "[workspace]\nmembers = [\"server\", \"lib\"]" > ./Cargo.toml
+COPY ./docker/Cargo.server.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 
 # Copy the server source code

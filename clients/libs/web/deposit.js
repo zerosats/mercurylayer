@@ -62,6 +62,10 @@ const init = async (clientConfig, wallet, token_id) => {
           err_msg = error.message;
         }
 
+        if (typeof err_msg === "object") {
+          err_msg = JSON.stringify(err_msg);
+        }
+
         throw new Error(`Deposit error: ${err_msg}`);
       }
 

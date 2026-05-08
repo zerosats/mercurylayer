@@ -42,23 +42,18 @@ services:
       retries: 30
 
   lockbox:
-    build:
-      context: lockbox
-      dockerfile: ./Dockerfile
+    image: mercurylayer/lockbox:latest
     depends_on:
       - db_lockbox
-      - vault-init
     environment:
       - LOCKBOX_DATABASE_URL=postgres://postgres:postgres@db_lockbox:5432/enclave
       - LOCKBOX_PORT=18080
-      - KEY_MANAGER=hashicorp_container
-      - HASHICORP_CONTAINER_TOKEN=2bbz80mr1zm0tfrjwxyq7f48ofgky848
-      - HASHICORP_CONTAINER_URL=http://vault:8200
-      - HASHICORP_CONTAINER_PATH=mercury-seed
-      - HASHICORP_CONTAINER_MOUNT_POINT=secret
-      - HASHICORP_CONTAINER_KEY_NAME=seed
+      - KEY_MANAGER=filesystem
+      - SEED_FILEPATH=/data/seed
     ports:
       - "18080:18080"
+    volumes:
+      - lockbox_seed_data:/data
 
   token-server-v2:
     build:
@@ -141,3 +136,4 @@ services:
 volumes:
   postgres_lockbox_data:
   postgres_server_data:
+  lockbox_seed_data:

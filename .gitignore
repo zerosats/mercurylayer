@@ -3,3 +3,14 @@
 .vscode
 /server/.env
 /token-server/.env
+
+# Node / web app artifacts
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local regtest chain/index data
+data_bitcoin_regtest/

@@ -37,10 +37,15 @@ ENV VCPKG_ROOT=/opt/vcpkg
 # Copy your project files
 COPY . .
 
-# Create build directory and run cmake
-RUN mkdir -p build && cd build
-RUN cd build && cmake --preset=vcpkg ..
-RUN cd build && cmake --build .
+# Build and remove vcpkg's transient source/download cache before committing the
+# layer. The cache can be several GB and is not needed to run MercuryLockbox.
+RUN mkdir -p build && \
+    cmake --preset=vcpkg .. && \
+    cmake --build build && \
+    rm -rf /opt/vcpkg/downloads \
+           /opt/vcpkg/buildtrees \
+           /opt/vcpkg/packages \
+           /root/.cache/vcpkg
 
 # Set the default command
 CMD ["./build/MercuryLockbox"]
