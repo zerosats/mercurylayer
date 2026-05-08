@@ -1,28 +1,30 @@
-# Task Plan: Local Testing and PWA Statecoin Transfer
+# Task Plan: PWA Wallet UX Redesign
 
 ## Goal
-Review the Mercury Layer codebase and produce a practical setup path for local testing plus a PWA client that can execute a statecoin transfer.
+Plan a wallet-oriented redesign for the Mercury PWA before making implementation changes.
 
 ## Phases
-- [x] Phase 1: Plan and setup
-- [x] Phase 2: Map repo structure and local test entrypoints
-- [x] Phase 3: Trace statecoin transfer APIs and browser/WASM support
-- [x] Phase 4: Produce setup and implementation plan
+- [x] Phase 1: Capture user goals and visual direction
+- [x] Phase 2: Define information architecture and primary wallet flow
+- [x] Phase 3: Decide transaction detail model and miner/dev actions
+- [x] Phase 4: Execute UI changes after approval
+- [x] Phase 5: Run and verify locally
 
 ## Key Questions
-1. What local services are needed for a complete regtest transfer?
-2. Which existing client library is the best base for a PWA?
-3. What storage, networking, and wallet state constraints matter in a browser?
-4. Is 45 GB disk space enough for local test dependencies and containers?
+1. What should be visible on the main wallet screen versus tucked into dev/miner tools?
+2. What objects should appear in the transaction list: deposits, received statecoins, sent transfers, withdrawals, or all statecoin lifecycle events?
+3. What details should the transaction inspection modal teach without overwhelming a wallet user?
+4. Should the app support multiple wallets in the primary UI, or keep that in settings/dev tools?
 
 ## Decisions Made
-- Use existing test harnesses and docs as source of truth before proposing a new PWA shape.
-- Use `clients/libs/web` and `wasm/web_pkg` as the PWA foundation rather than the top-level CRA `web` app.
-- Use `docker-compose-token-servers.yml` plus `clients/tests/web/server-regtest.cjs` for browser-compatible local regtest statecoin transfer testing.
+- Main screen should feel like a simple wallet inspired by the reference screenshot: balance at top, primary Send/Receive actions, transaction list below.
+- Main wallet should have two primary actions: Send and Receive.
+- Receive should offer two paths: Receive Statecoin or Deposit Bitcoin UTXO.
+- Mining/block generation belongs in a separate dev-oriented view rather than the main wallet surface.
+- Transaction rows should open an inspection modal with full statecoin lifecycle details and explanatory structure.
 
 ## Errors Encountered
-- `clients/tests/web/README.md` was absent, so package scripts and test files were used instead.
-- `rustc --version` was blocked by sandboxed rustup writes to `~/.rustup`; running Rust commands may need approval if rustup/cache writes are required.
+- Browser verification against `http://localhost:5173` was blocked by the browser tool security policy. `npm run build` succeeded.
 
 ## Status
-**Complete** - setup and implementation plan written to `statecoin-pwa-local-testing.md`.
+**Complete** - PWA UI and flow updated; build verification passed.

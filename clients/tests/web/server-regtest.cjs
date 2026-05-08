@@ -122,6 +122,16 @@ app.get('/health', async (req, res) => {
   }
 })
 
+app.get('/new_address', async (req, res) => {
+  try {
+    const address = await getnewaddress()
+    res.status(200).send({ address })
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).send({ message: error.message })
+  }
+})
+
 app.post('/generate_blocks', async (req, res) => {
   const { blocks } = req.body
 
