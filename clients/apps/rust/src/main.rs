@@ -1,7 +1,9 @@
-use std::{thread, time::Duration};
+use std::{thread, time::Duration, env};
 
 use anyhow::Result;
+use bitcoin::Network;
 use clap::{Parser, Subcommand};
+use log::{info, debug};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -88,21 +90,83 @@ enum Commands {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    // Initialize logging - set RUST_LOG if not already set
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info");
+    }
+    env_logger::init();
+
     let cli = Cli::parse();
 
+    debug!("Starting Mercury Layer client");
+    
+    // Determine which configuration file will be used and get full absolute path
+    let config_filename = if let Ok(network) = env::var("ML_NETWORK") {
+        if network == "regtest" {
+            "regtest.Settings.toml"
+        } else {
+            "Settings.toml"
+        }
+    } else {
+        "Settings.toml"
+    };
+    
+    // Get the current working directory and construct the full absolute path
+    let current_dir = std::env::current_dir()?;
+    let config_path = current_dir.join(config_filename);
+    let config_full_path = config_path.canonicalize()
+        .unwrap_or_else(|_| config_path.clone()); // fallback to non-canonicalized path if canonicalize fails
+    
+    // Log the config path only at debug level
+    debug!("Configuration file path: {}", config_full_path.display());
+    debug!("Loading client configuration from: {}", config_full_path.display());
+
     let client_config = mercuryrustlib::client_config::load().await;
+    
+    // Show essential network info at INFO level, detailed config at DEBUG level
+    info!("Connected to {} network", match client_config.network {
+        Network::Bitcoin => "Bitcoin",
+        Network::Testnet => "Testnet",
+        Network::Signet => "Signet", 
+        Network::Regtest => "Regtest",
+        _ => "Unknown"
+    });
+    
+    // Move detailed configuration logging to debug level
+    debug!("Configuration details:");
+    debug!("  Statechain Entity: {}", client_config.statechain_entity);
+    debug!("  Electrum Server: {}", client_config.electrum_server_url);
+    debug!("  Electrum Type: {}", client_config.electrum_type);
+    debug!("  Fee Rate Tolerance: {}", client_config.fee_rate_tolerance);
+    debug!("  Max Fee Rate: {}", client_config.max_fee_rate);
+    debug!("  Confirmation Target: {}", client_config.confirmation_target);
+    if client_config.tor_proxy.is_some() {
+        debug!("  Tor Proxy: enabled");
+    } else {
+        debug!("  Tor Proxy: disabled");
+    }
 
     match cli.command {
         Commands::CreateWallet { name } => {
+            debug!("Creating new wallet: {}", name);
             let wallet = mercuryrustlib::wallet::create_wallet(&name, &client_config).await?;
 
             mercuryrustlib::sqlite_manager::insert_wallet(&client_config.pool, &wallet).await?;
-            println!("Wallet created: {:?}", wallet);
+            
+            // Beautiful output for wallet creation
+            println!("✅ Wallet '{}' created successfully!", name);
+            println!();
+            println!("📁 Wallet Details:");
+            println!("   Name: {}", wallet.name);
+            
+            info!("Wallet '{}' created successfully", name);
         }
         Commands::NewToken {} => {
+            info!("Requesting new token from statechain entity");
             let token_response = mercuryrustlib::deposit::get_token(&client_config).await?;
 
             let obj = json!(token_response);
+            info!("Token received successfully");
 
             println!("{}", serde_json::to_string_pretty(&obj).unwrap());
         }
@@ -111,6 +175,8 @@ async fn main() -> Result<()> {
             token_id,
             amount,
         } => {
+            debug!("Generating new deposit address for wallet '{}', amount: {}, token: {}", 
+                  wallet_name, amount, token_id);
             let address = mercuryrustlib::deposit::get_deposit_bitcoin_address(
                 &client_config,
                 &wallet_name,
@@ -119,9 +185,16 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            let obj = json!({"address": address});
-
-            println!("{}", serde_json::to_string_pretty(&obj).unwrap());
+            // Beautiful output for deposit address
+            println!("💰 New Deposit Address Generated");
+            println!();
+            println!("📧 Address: {}", address);
+            println!("💼 Wallet: {}", wallet_name);
+            println!("💵 Amount: {} sats", amount);
+            println!("🎟️  Token: {}", token_id);
+            println!();
+            
+            info!("Deposit address generated for wallet '{}'", wallet_name);
         }
         Commands::BroadcastBackupTransaction {
             wallet_name,
@@ -140,29 +213,45 @@ async fn main() -> Result<()> {
             .await?;
         }
         Commands::ListStatecoins { wallet_name } => {
+            debug!("Updating coin status for wallet: {}", wallet_name);
             mercuryrustlib::coin_status::update_coins(&client_config, &wallet_name).await?;
             let wallet =
                 mercuryrustlib::sqlite_manager::get_wallet(&client_config.pool, &wallet_name)
                     .await?;
 
-            let mut coins_json = Vec::new();
-
-            for coin in wallet.coins.iter() {
-                let obj = json!({
-                    "coin.user_pubkey": coin.user_pubkey,
-                    "coin.aggregated_address": coin.aggregated_address.as_ref().unwrap_or(&"".to_string()),
-                    "coin.address": coin.address,
-                    "coin.statechain_id": coin.statechain_id.as_ref().unwrap_or(&"".to_string()),
-                    "coin.amount": coin.amount.unwrap_or(0),
-                    "coin.status": coin.status,
-                    "coin.locktime": coin.locktime.unwrap_or(0),
-                });
-
-                coins_json.push(obj);
+            // Beautiful output for listing statecoins
+            println!("💼 Wallet: {}", wallet_name);
+            println!("🪙 Statecoins ({} coins)", wallet.coins.len());
+            println!("{}", "═".repeat(80));
+            
+            if wallet.coins.is_empty() {
+                println!("   No statecoins found in this wallet");
+                println!();
+                return Ok(());
             }
 
-            let coins_json_string = serde_json::to_string_pretty(&coins_json).unwrap();
-            println!("{}", coins_json_string);
+            for (i, coin) in wallet.coins.iter().enumerate() {
+                println!("🪙 Coin #{}", i + 1);
+                println!("   📋 Statechain ID: {}", coin.statechain_id.as_ref().unwrap_or(&"N/A".to_string()));
+                println!("   💰 Amount: {} sats", coin.amount.unwrap_or(0));
+                println!("   📍 Status: {}", coin.status);
+                println!("   🏠 Address: {}", coin.address);
+                if let Some(agg_addr) = &coin.aggregated_address {
+                    if !agg_addr.is_empty() {
+                        println!("   🏢 Aggregated Address: {}", agg_addr);
+                    }
+                }
+                println!("   ⏰ Locktime: {}", coin.locktime.unwrap_or(0));
+                println!("   🔑 User Pubkey: {}", coin.user_pubkey);
+                
+                if i < wallet.coins.len() - 1 {
+                    println!("   {}", "─".repeat(60));
+                }
+            }
+            println!("{}", "═".repeat(80));
+            println!();
+            
+            info!("Listed {} coins for wallet '{}'", wallet.coins.len(), wallet_name);
         }
         Commands::Withdraw {
             wallet_name,
@@ -186,22 +275,26 @@ async fn main() -> Result<()> {
             wallet_name,
             generate_batch_id,
         } => {
+            debug!("Generating new transfer address for wallet: {}", wallet_name);
             let address = mercuryrustlib::transfer_receiver::new_transfer_address(
                 &client_config,
                 &wallet_name,
             )
             .await?;
 
-            let mut obj = json!({"new_transfer_address:": address});
+            // Beautiful output for new transfer address
+            println!("🔗 New Transfer Address Generated");
+            println!();
+            println!("📧 Address: {}", address);
+            println!("💼 Wallet: {}", wallet_name);
 
             if generate_batch_id {
-                // Generate a random batch_id
                 let batch_id = uuid::Uuid::new_v4().to_string();
-
-                obj["batch_id"] = json!(batch_id);
+                println!("🆔 Batch ID: {}", batch_id);
             }
-
-            println!("{}", serde_json::to_string_pretty(&obj).unwrap());
+            println!();
+            
+            info!("Transfer address generated for wallet '{}'", wallet_name);
         }
         Commands::TransferSend {
             wallet_name,
@@ -307,7 +400,10 @@ async fn main() -> Result<()> {
         }
     }
 
+    debug!("Command completed successfully");
+    debug!("Closing database connection");
     client_config.pool.close().await;
+    debug!("Mercury Layer client terminated");
 
     Ok(())
 }

@@ -14,7 +14,9 @@ clap = { workspace = true }
 chrono = { workspace = true }
 config = { workspace = true }
 electrum-client = { workspace = true }
+env_logger = { workspace = true }
 hex = { workspace = true }
+log = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true }
 schemars = { workspace = true }
